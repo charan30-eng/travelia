@@ -1,0 +1,1540 @@
+import React, { useState, useMemo } from 'react';
+import { 
+  Sparkles, 
+  RotateCcw, 
+  Edit3, 
+  Bookmark, 
+  Share2, 
+  Calendar, 
+  Clock, 
+  MapPin, 
+  Star, 
+  Plus, 
+  Trash2, 
+  Check, 
+  ChevronRight, 
+  DollarSign, 
+  Users, 
+  Building2, 
+  UtensilsCrossed, 
+  Compass, 
+  ArrowUpRight,
+  Info,
+  CheckCircle2,
+  AlertTriangle,
+  Map,
+  Luggage,
+  ShieldCheck,
+  Activity,
+  CloudSun,
+  Printer,
+  Copy,
+  Download,
+  CalendarDays,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  Eye,
+  X,
+  PlaneTakeoff,
+  Plane,
+  Award,
+  ArrowUpDown,
+  Navigation,
+  CheckSquare,
+  Square,
+  BadgeCheck
+} from 'lucide-react';
+import { TripPlan, Hotel, Restaurant, TouristPlace, Currency, SmartReplanSuggestion, HealthScoreImprovement, ItineraryActivity } from '../types';
+import { formatCurrency } from '../data/mockData';
+import { SmartReplanModal } from './SmartReplanModal';
+import { TripMapView } from './TripMapView';
+import { GroupTripSection } from './GroupTripSection';
+import { PackingAssistantSection } from './PackingAssistantSection';
+import { WeatherWidgetStrip } from './WeatherWidgetStrip';
+import { TripHealthScoreCard } from './TripHealthScoreCard';
+import { TravelSafetySection } from './TravelSafetySection';
+import { EstimatedBudgetSection } from './EstimatedBudgetSection';
+import { TripFlightsSection } from './TripFlightsSection';
+import confetti from 'canvas-confetti';
+
+interface TripDashboardViewProps {
+  trip: TripPlan;
+  onRegenerate: () => void;
+  onEdit: () => void;
+  onSaveTrip: (trip: TripPlan) => void;
+  onViewBudget: () => void;
+  onSelectHotel: (hotel: Hotel) => void;
+  onTogglePlace: (placeId: string) => void;
+  onToggleRestaurant: (restId: string) => void;
+  onAddActivity: (dayNumber: number) => void;
+  onApplyReplan?: (suggestion: SmartReplanSuggestion) => void;
+  onApplyHealthImprovement?: (improvement: HealthScoreImprovement) => void;
+  currency: Currency;
+  isSaved?: boolean;
+}
+
+export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
+  trip,
+  onRegenerate,
+  onEdit,
+  onSaveTrip,
+  onViewBudget,
+  onSelectHotel,
+  onTogglePlace,
+  onToggleRestaurant,
+  onAddActivity,
+  onApplyReplan,
+  onApplyHealthImprovement,
+  currency,
+  isSaved = false,
+}) => {
+  const [activeDay, setActiveDay] = useState<number>(1);
+  const [justSaved, setJustSaved] = useState(isSaved);
+  const [isSmartReplanOpen, setIsSmartReplanOpen] = useState(false);
+  const [replanPresetDisruption, setReplanPresetDisruption] = useState<string | undefined>(undefined);
+
+  // Trip Status
+  const [tripStatus, setTripStatus] = useState<'planning' | 'confirmed' | 'active' | 'completed'>('planning');
+
+  // Share & Export Modal
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Completed Activities tracker: set of activity IDs
+  const [completedActivities, setCompletedActivities] = useState<Set<string>>(new Set());
+
+  // Expanded Activity Details
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
+
+  // Category filter for daily activities
+  const [activityCategoryFilter, setActivityCategoryFilter] = useState<string>('all');
+
+  // Filters for Hotels, Sights & Restaurants
+  const [hotelFilter, setHotelFilter] = useState<string>('all');
+  const [placeFilter, setPlaceFilter] = useState<string>('all');
+  const [restFilter, setRestFilter] = useState<string>('all');
+
+  // Quick Detail Modals for Hotel, Place, or Restaurant
+  const [detailModalItem, setDetailModalItem] = useState<{
+    type: 'hotel' | 'place' | 'restaurant';
+    data: any;
+  } | null>(null);
+
+  // Custom User Notes
+  const [customNotes, setCustomNotes] = useState<string[]>(trip.aiNotes || []);
+  const [newNoteInput, setNewNoteInput] = useState('');
+  const [showAddNote, setShowAddNote] = useState(false);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  const handleSave = () => {
+    onSaveTrip(trip);
+    setJustSaved(true);
+    showToast('Trip successfully saved to your saved trips portfolio!');
+    try {
+      confetti({
+        particleCount: 35,
+        spread: 45,
+        origin: { y: 0.6 }
+      });
+    } catch (e) {}
+  };
+
+  const handleOpenSmartReplanWithReason = (disruption?: string) => {
+    setReplanPresetDisruption(disruption);
+    setIsSmartReplanOpen(true);
+  };
+
+  const handleApplyReplanSuggestion = (suggestion: SmartReplanSuggestion) => {
+    if (onApplyReplan) {
+      onApplyReplan(suggestion);
+    }
+  };
+
+  const handleApplyHealth = (improvement: HealthScoreImprovement) => {
+    if (onApplyHealthImprovement) {
+      onApplyHealthImprovement(improvement);
+    }
+  };
+
+  const handleApplyRouteOptimization = (dayNumber: number, optimizedOrder: string[]) => {
+    try {
+      confetti({
+        particleCount: 40,
+        spread: 50,
+        origin: { y: 0.6 }
+      });
+    } catch (e) {}
+    showToast(`Route optimized for Day 0${dayNumber}: Backtracking eliminated!`);
+  };
+
+  // Toggle Activity Completion
+  const toggleActivityCompletion = (actId: string, actTitle: string) => {
+    setCompletedActivities(prev => {
+      const next = new Set(prev);
+      if (next.has(actId)) {
+        next.delete(actId);
+        showToast(`Marked "${actTitle}" as pending`);
+      } else {
+        next.add(actId);
+        showToast(`Completed "${actTitle}"! 🎉`);
+        try {
+          confetti({
+            particleCount: 25,
+            spread: 40,
+            origin: { y: 0.7 }
+          });
+        } catch (e) {}
+      }
+      return next;
+    });
+  };
+
+  // Add Custom Note
+  const handleAddNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteInput.trim()) return;
+    setCustomNotes(prev => [...prev, newNoteInput.trim()]);
+    setNewNoteInput('');
+    setShowAddNote(false);
+    showToast('Added new custom trip note');
+  };
+
+  const handleDeleteNote = (index: number) => {
+    setCustomNotes(prev => prev.filter((_, i) => i !== index));
+    showToast('Note deleted');
+  };
+
+  // Copy Itinerary Text
+  const handleCopyItinerary = () => {
+    const summary = `
+✈️ TRAVELIA AI TRIP ITINERARY: ${trip.destination.toUpperCase()}
+Duration: ${trip.days} Days / ${trip.nights} Nights • Travelers: ${trip.travelers} Pax
+Budget Estimate: ${formatCurrency(trip.budget.total, currency)}
+--------------------------------------------------
+${trip.itinerary.map(day => `
+DAY 0${day.dayNumber}: ${day.title} (${day.theme})
+${day.activities.map(act => `  • ${act.time} - ${act.activity} (${act.location}) [${act.duration}]`).join('\n')}
+`).join('\n')}
+--------------------------------------------------
+Generated by Travelia AI Travel Operating System
+    `.trim();
+
+    navigator.clipboard.writeText(summary);
+    showToast('Itinerary briefing copied to clipboard!');
+  };
+
+  // Download .ics Calendar File
+  const handleDownloadCalendar = () => {
+    const icsEvents = trip.itinerary.flatMap((day, dayIdx) => {
+      return day.activities.map((act, actIdx) => {
+        return `BEGIN:VEVENT
+SUMMARY:${act.activity} - ${trip.destination}
+DESCRIPTION:${act.description || act.aiRecommendation || 'Trip activity'}
+LOCATION:${act.location}
+STATUS:CONFIRMED
+END:VEVENT`;
+      });
+    }).join('\n');
+
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Travelia AI//Trip Itinerary//EN
+CALSCALE:GREGORIAN
+${icsEvents}
+END:VCALENDAR`;
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.setAttribute('download', `${trip.destination.toLowerCase()}_trip_itinerary.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Exported calendar (.ics) file downloaded!');
+  };
+
+  // Selected Day Details
+  const currentDayData = trip.itinerary.find(d => d.dayNumber === activeDay) || trip.itinerary[0];
+
+  // Activities for selected day with filter
+  const filteredDayActivities = useMemo(() => {
+    if (!currentDayData) return [];
+    if (activityCategoryFilter === 'all') return currentDayData.activities;
+    return currentDayData.activities.filter(a => a.category?.toLowerCase() === activityCategoryFilter.toLowerCase());
+  }, [currentDayData, activityCategoryFilter]);
+
+  // Completion calculation for selected day
+  const dayCompletedCount = currentDayData?.activities.filter(a => completedActivities.has(a.id)).length || 0;
+  const dayTotalCount = currentDayData?.activities.length || 0;
+  const dayProgressPct = dayTotalCount > 0 ? Math.round((dayCompletedCount / dayTotalCount) * 100) : 0;
+
+  // Filtered lists
+  const filteredHotels = useMemo(() => {
+    if (hotelFilter === 'all') return trip.hotels;
+    return trip.hotels.filter(h => h.category?.toLowerCase() === hotelFilter.toLowerCase());
+  }, [trip.hotels, hotelFilter]);
+
+  const filteredPlaces = useMemo(() => {
+    if (placeFilter === 'all') return trip.touristPlaces;
+    return trip.touristPlaces.filter(p => p.category?.toLowerCase() === placeFilter.toLowerCase());
+  }, [trip.touristPlaces, placeFilter]);
+
+  const filteredRestaurants = useMemo(() => {
+    if (restFilter === 'all') return trip.restaurants;
+    return trip.restaurants.filter(r => r.priceLevel?.toLowerCase() === restFilter.toLowerCase() || r.cuisine?.toLowerCase().includes(restFilter.toLowerCase()));
+  }, [trip.restaurants, restFilter]);
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10">
+      
+      {/* FLOATING TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#191919] text-white px-5 py-3 rounded-2xl shadow-2xl border border-neutral-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <BadgeCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs sm:text-sm font-bold">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* TOP HERO BANNER */}
+      <div className="relative rounded-[36px] overflow-hidden bg-neutral-900 text-white shadow-xl min-h-[340px] flex flex-col justify-between p-6 sm:p-10 border border-neutral-800">
+        
+        {/* Background Image with overlay */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src={trip.heroImage}
+            alt={trip.destination}
+            className="w-full h-full object-cover opacity-45 scale-105"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/45 to-neutral-950/20" />
+        </div>
+
+        {/* Top Badges & Actions */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#344E27]/90 text-[#E5ECE0] text-xs font-bold backdrop-blur-md border border-[#344E27]">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI Verified Travel Plan</span>
+            </div>
+            
+            <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold text-white border border-white/20">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{trip.travelDates}</span>
+            </div>
+
+            {/* Trip Status Pill Dropdown */}
+            <div className="relative inline-block">
+              <select
+                value={tripStatus}
+                onChange={(e) => {
+                  setTripStatus(e.target.value as any);
+                  showToast(`Trip status updated to ${e.target.value.toUpperCase()}`);
+                }}
+                aria-label="Trip Status"
+                className="px-3 py-1 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-xs font-extrabold text-amber-300 border border-amber-400/40 cursor-pointer focus:outline-none"
+              >
+                <option value="planning" className="bg-neutral-900 text-white">⏳ Status: Planning</option>
+                <option value="confirmed" className="bg-neutral-900 text-white">✅ Status: Confirmed & Booked</option>
+                <option value="active" className="bg-neutral-900 text-white">🚗 Status: On The Road</option>
+                <option value="completed" className="bg-neutral-900 text-white">🏆 Status: Completed</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Top Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => handleOpenSmartReplanWithReason()}
+              className="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-neutral-950" />
+              <span>Smart Replan</span>
+            </button>
+
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="px-4 py-2 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md text-white text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share & Export</span>
+            </button>
+
+            <button
+              id="regenerate-trip-btn"
+              onClick={onRegenerate}
+              className="px-4 py-2 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md text-white text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Regenerate</span>
+            </button>
+
+            <button
+              onClick={onEdit}
+              className="px-4 py-2 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md text-white text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Input</span>
+            </button>
+
+            <button
+              id="save-trip-header-btn"
+              onClick={handleSave}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ${
+                justSaved 
+                  ? 'bg-emerald-600 text-white shadow-md' 
+                  : 'bg-[#344E27] hover:bg-[#273D1C] text-white shadow-md'
+              }`}
+            >
+              {justSaved ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Saved</span>
+                </>
+              ) : (
+                <>
+                  <Bookmark className="w-3.5 h-3.5" />
+                  <span>Save Trip</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Hero Bottom Details */}
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6 pt-10">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase font-extrabold tracking-widest text-[#E5ECE0]">
+                {trip.days} Days • {trip.nights} Nights • {trip.travelers} Traveler(s)
+              </span>
+              <span className="text-xs text-neutral-400">•</span>
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                <PlaneTakeoff className="w-3.5 h-3.5" />
+                Upcoming Trip
+              </span>
+            </div>
+
+            <h1 className="font-display font-black text-3xl sm:text-5xl text-white tracking-tight uppercase">
+              {trip.destination}
+            </h1>
+            <p className="text-neutral-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
+              {trip.tripOverview}
+            </p>
+          </div>
+
+          {/* Quick Flight & Budget Summary Pills */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <a
+              href="#section-flights"
+              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 transition-all flex items-center justify-between gap-4 group shadow-lg"
+            >
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-neutral-300 block">Roundtrip Flight</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <span className="font-display font-extrabold text-xl text-white">
+                  BOM ➔ GOX
+                </span>
+                <span className="text-[11px] text-emerald-300 font-semibold block">
+                  IndiGo 6E-2041 • On Time
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-white/20 group-hover:bg-white/30 flex items-center justify-center text-white transition-all group-hover:scale-105">
+                <Plane className="w-4 h-4" />
+              </div>
+            </a>
+
+            <a
+              href="#section-budget"
+              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 transition-all flex items-center justify-between gap-6 group shadow-lg"
+            >
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-neutral-300 block">Estimated Budget</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <span className="font-display font-extrabold text-2xl text-white">
+                  {formatCurrency(trip.budget.total, currency)}
+                </span>
+                <span className="text-[11px] text-emerald-300 font-semibold block">
+                  ~ {formatCurrency(Math.round(trip.budget.total / trip.travelers), currency)} / person
+                </span>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-[#344E27] group-hover:bg-[#273D1C] flex items-center justify-center text-white transition-all group-hover:scale-105">
+                <ArrowUpRight className="w-4 h-4" />
+              </div>
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      {/* QUICK METRICS RIBBON (Key Trip Statistics) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center shrink-0">
+            <Compass className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Itinerary Sights</span>
+            <span className="font-display font-extrabold text-lg text-[#191919]">
+              {trip.touristPlaces.filter(p => p.added).length || trip.touristPlaces.length} Highlights
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+            <UtensilsCrossed className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Dining Spots</span>
+            <span className="font-display font-extrabold text-lg text-[#191919]">
+              {trip.restaurants.length} Handpicked
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Stay Tier</span>
+            <span className="font-display font-extrabold text-lg text-[#191919] capitalize">
+              {trip.hotelCategory} Category
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+            <Activity className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Trip Health</span>
+            <span className="font-display font-extrabold text-lg text-emerald-800">
+              92 / 100 (Optimal)
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      {/* QUICK FEATURE NAVIGATION JUMP-BAR */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <a
+          href="#section-budget"
+          className="p-3.5 rounded-2xl bg-white border border-[#344E27]/30 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#344E27] text-white flex items-center justify-center group-hover:scale-105 transition-all">
+            <DollarSign className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Estimate</span>
+            <span className="text-xs font-extrabold text-[#344E27] truncate block">
+              {formatCurrency(trip.budget.total, currency)}
+            </span>
+          </div>
+        </a>
+
+        <a
+          href="#section-flights"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <Plane className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Aviation</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Flights & Passes</span>
+          </div>
+        </a>
+
+        <a
+          href="#section-weather"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <CloudSun className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Forecast</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Weather Strip</span>
+          </div>
+        </a>
+
+        <a
+          href="#section-map"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <Map className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Visualizer</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Route Map</span>
+          </div>
+        </a>
+
+        <a
+          href="#section-health"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <Activity className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">92 / 100</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Health Score</span>
+          </div>
+        </a>
+
+        <a
+          href="#section-group"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <Users className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">4 Members</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Group Hub</span>
+          </div>
+        </a>
+
+        <a
+          href="#section-packing"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <Luggage className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Checklist</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">AI Packing</span>
+          </div>
+        </a>
+
+        <a
+          href="#section-safety"
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        >
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Safety & Intel</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Emergency 112</span>
+          </div>
+        </a>
+      </div>
+
+      {/* FEATURE 1: WEATHER-AWARE PLANNING STRIP */}
+      <div id="section-weather">
+        <WeatherWidgetStrip
+          trip={trip}
+          activeDay={activeDay}
+          onSelectDay={(day) => setActiveDay(day)}
+          onTriggerWeatherReplan={(dayNum) => {
+            setActiveDay(dayNum);
+            handleOpenSmartReplanWithReason('bad_weather');
+          }}
+        />
+      </div>
+
+      {/* AI NOTES & CUSTOM TRAVEL MEMOS */}
+      <div className="bg-[#E5ECE0]/60 rounded-3xl p-5 sm:p-6 border border-[#344E27]/15 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-[#344E27] text-white flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-[#344E27] uppercase tracking-wider">AI Travel Optimizer Insights & Notes</h4>
+              <span className="text-[11px] text-neutral-500">Destination advisories, timing recommendations & your custom memos</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowAddNote(!showAddNote)}
+            className="px-3 py-1.5 rounded-full bg-white text-[#344E27] hover:bg-[#344E27] hover:text-white text-xs font-bold transition-all border border-[#344E27]/20 flex items-center gap-1 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Note</span>
+          </button>
+        </div>
+
+        {showAddNote && (
+          <form onSubmit={handleAddNote} className="flex gap-2 animate-in fade-in duration-150">
+            <input
+              type="text"
+              value={newNoteInput}
+              onChange={(e) => setNewNoteInput(e.target.value)}
+              placeholder="e.g. Remember to book sunset boat cruise tickets in advance..."
+              className="flex-1 px-4 py-2 rounded-xl bg-white border border-neutral-300 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#344E27]"
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl bg-[#344E27] text-white text-xs font-bold hover:bg-[#273D1C] cursor-pointer"
+            >
+              Save Note
+            </button>
+          </form>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+          {customNotes.map((note, i) => (
+            <div key={i} className="bg-white/80 p-3 rounded-2xl border border-neutral-200/70 flex items-center justify-between text-xs text-[#191919] font-medium gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#344E27] shrink-0" />
+                <span className="truncate">{note}</span>
+              </div>
+              <button
+                onClick={() => handleDeleteNote(i)}
+                className="text-neutral-300 hover:text-red-500 transition-colors p-1"
+                title="Remove note"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* ITINERARY TIMELINE & ACTIVITY MASTER HUB */}
+      {/* ========================================================================= */}
+      <section className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
+              Day-By-Day Schedule
+            </span>
+            <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-0.5">
+              Personalized Daily Itinerary
+            </h2>
+          </div>
+
+          {/* Day Selector Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {trip.itinerary.map((day) => (
+              <button
+                key={day.dayNumber}
+                onClick={() => {
+                  setActiveDay(day.dayNumber);
+                  setActivityCategoryFilter('all');
+                }}
+                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  activeDay === day.dayNumber
+                    ? 'bg-[#344E27] text-white shadow-sm'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
+                }`}
+              >
+                Day 0{day.dayNumber}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Selected Day Timeline Details */}
+        {trip.itinerary
+          .filter((d) => d.dayNumber === activeDay)
+          .map((day) => (
+            <div
+              key={day.dayNumber}
+              className="bg-white rounded-[32px] p-6 sm:p-8 border border-[#E5E7EB] shadow-2xs space-y-6"
+            >
+              {/* Day Header with Live Progress */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-neutral-100 gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#E5ECE0] text-[#344E27]">
+                      DAY 0{day.dayNumber}
+                    </span>
+                    <span className="text-xs font-semibold text-neutral-500">
+                      {dayCompletedCount} of {dayTotalCount} Activities Completed
+                    </span>
+                  </div>
+
+                  <h3 className="font-display font-bold text-xl text-[#191919] mt-2">
+                    {day.title}
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Theme: {day.theme}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onAddActivity(day.dayNumber)}
+                    className="px-3.5 py-1.5 rounded-full bg-neutral-100 hover:bg-[#344E27] text-neutral-700 hover:text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Activity</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenSmartReplanWithReason('running_late')}
+                    className="px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Replan Day</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Day Activity Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px] font-bold text-neutral-500">
+                  <span>Daily Progress</span>
+                  <span>{dayProgressPct}% Done</span>
+                </div>
+                <div className="h-2 w-full bg-neutral-100 rounded-full overflow-hidden">
+                  <div 
+                    style={{ width: `${dayProgressPct}%` }}
+                    className="h-full bg-[#344E27] transition-all duration-300 rounded-full"
+                  />
+                </div>
+              </div>
+
+              {/* Activity Category Filters */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-2">
+                {[
+                  { id: 'all', label: 'All Activities' },
+                  { id: 'sightseeing', label: 'Sightseeing' },
+                  { id: 'food', label: 'Dining' },
+                  { id: 'relaxation', label: 'Relaxation' },
+                  { id: 'adventure', label: 'Adventure' },
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActivityCategoryFilter(cat.id)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                      activityCategoryFilter === cat.id
+                        ? 'bg-neutral-800 text-white'
+                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Activities Vertical Timeline */}
+              <div className="relative pl-6 sm:pl-8 space-y-6 border-l-2 border-dashed border-[#C8DAC1] pt-2">
+                {filteredDayActivities.map((act, index) => {
+                  const isDone = completedActivities.has(act.id);
+                  const isExpanded = expandedActivityId === act.id;
+
+                  return (
+                    <div key={act.id} className="relative group">
+                      
+                      {/* Circle / Checkbox on timeline */}
+                      <button
+                        onClick={() => toggleActivityCompletion(act.id, act.activity)}
+                        title={isDone ? "Mark as pending" : "Mark as completed"}
+                        className={`absolute -left-[31px] sm:-left-[39px] top-2 w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                          isDone 
+                            ? 'bg-emerald-600 text-white shadow-xs' 
+                            : 'bg-white border-2 border-[#344E27] hover:border-emerald-600 text-transparent hover:text-emerald-600'
+                        }`}
+                      >
+                        <Check className="w-3 h-3 stroke-[3]" />
+                      </button>
+
+                      {/* Activity Item Card */}
+                      <div className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-2.5 ${
+                        isDone 
+                          ? 'bg-emerald-50/40 border-emerald-200' 
+                          : 'bg-neutral-50 hover:bg-[#F4F7F2] border-neutral-200/80'
+                      }`}>
+                        
+                        {/* Top Metadata Row */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-extrabold px-2 py-0.5 rounded-md bg-[#344E27] text-white">
+                              {act.time}
+                            </span>
+                            <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
+                              {act.category}
+                            </span>
+                            {isDone && (
+                              <span className="text-[10px] font-black px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 uppercase">
+                                Completed
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-[#191919]">
+                              {act.estimatedCost === 0 ? 'Free' : formatCurrency(act.estimatedCost, currency)}
+                            </span>
+                            <button
+                              onClick={() => setExpandedActivityId(isExpanded ? null : act.id)}
+                              className="text-neutral-400 hover:text-neutral-700 transition-colors p-1"
+                              title="Toggle details"
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Title & Description */}
+                        <h4 className={`font-display font-bold text-base ${isDone ? 'line-through text-neutral-500' : 'text-[#191919]'}`}>
+                          {act.activity}
+                        </h4>
+
+                        <p className="text-xs text-neutral-600 leading-relaxed">
+                          {act.aiRecommendation || 'Enjoy this curated travel experience.'}
+                        </p>
+
+                        {/* Quick details */}
+                        <div className="flex flex-wrap items-center gap-4 text-[11px] text-neutral-500 pt-1">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-[#344E27]" />
+                            {act.location}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#344E27]" />
+                            {act.duration}
+                          </span>
+                        </div>
+
+                        {/* Expandable Pro Travel Details */}
+                        {isExpanded && (
+                          <div className="mt-3 pt-3 border-t border-neutral-200/80 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs animate-in fade-in duration-150">
+                            <div className="p-3 rounded-xl bg-white border border-neutral-200">
+                              <span className="font-bold text-[#344E27] block mb-0.5">💡 AI Insider Tip</span>
+                              <span className="text-neutral-600 text-[11px]">
+                                Arrive 15 mins before to beat crowds. Photography lighting is ideal during this slot.
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-xl bg-white border border-neutral-200">
+                              <span className="font-bold text-[#344E27] block mb-0.5">🧭 Navigation & Attire</span>
+                              <span className="text-neutral-600 text-[11px]">
+                                Casual comfortable walking footwear recommended. Keep water bottle handy.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+
+            </div>
+          ))}
+      </section>
+
+      {/* FEATURE 2: INTERACTIVE TRIP MAP & ROUTE OPTIMIZER */}
+      <div id="section-map">
+        <TripMapView
+          trip={trip}
+          activeDay={activeDay}
+          onSelectDay={(day) => setActiveDay(day)}
+          onApplyOptimizedRoute={handleApplyRouteOptimization}
+        />
+      </div>
+
+      {/* FEATURE 3: AI TRIP HEALTH SCORE CARD */}
+      <div id="section-health">
+        <TripHealthScoreCard
+          trip={trip}
+          onApplyImprovement={handleApplyHealth}
+        />
+      </div>
+
+      {/* FEATURE 4: GROUP TRIP COLLABORATION SECTION */}
+      <div id="section-group">
+        <GroupTripSection trip={trip} />
+      </div>
+
+      {/* FEATURE 5: AI SMART PACKING ASSISTANT */}
+      <div id="section-packing">
+        <PackingAssistantSection trip={trip} />
+      </div>
+
+      {/* FEATURE 6: ESTIMATED BUDGET & FINANCIAL INTELLIGENCE */}
+      <EstimatedBudgetSection
+        trip={trip}
+        currency={currency}
+        onViewFullBudget={onViewBudget}
+        onToast={showToast}
+      />
+
+      {/* FEATURE 7: FLIGHT BOOKINGS & AIRPORT INTELLIGENCE */}
+      <TripFlightsSection
+        trip={trip}
+        currency={currency}
+        onToast={showToast}
+      />
+
+      {/* ========================================================================= */}
+      {/* HOTEL RECOMMENDATIONS SECTION (WITH FILTER & DETAIL MODAL) */}
+      {/* ========================================================================= */}
+      <section className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
+              Handpicked Stays
+            </span>
+            <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-0.5">
+              AI Selected Accommodations
+            </h2>
+          </div>
+
+          {/* Hotel Filter Buttons */}
+          <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-full self-start sm:self-auto">
+            {['all', 'luxury', 'mid', 'budget'].map(cat => (
+              <button
+                key={cat}
+                onClick={() => setHotelFilter(cat)}
+                className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer ${
+                  hotelFilter === cat
+                    ? 'bg-[#344E27] text-white shadow-2xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                {cat === 'all' ? 'All Stays' : cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {filteredHotels.map((hotel) => (
+            <div
+              key={hotel.id}
+              className={`bg-white rounded-[24px] overflow-hidden border transition-all flex flex-col justify-between ${
+                hotel.selected 
+                  ? 'border-[#344E27] ring-2 ring-[#344E27] shadow-md' 
+                  : 'border-[#E5E7EB] shadow-2xs hover:shadow-md'
+              }`}
+            >
+              {/* Hotel Image with Badges */}
+              <div className="relative h-48 overflow-hidden bg-neutral-100">
+                <img
+                  src={hotel.image}
+                  alt={hotel.name}
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-[#344E27] uppercase">
+                  {hotel.category} Tier
+                </div>
+                <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
+                  <span>{hotel.rating}</span>
+                </div>
+              </div>
+
+              {/* Hotel Details */}
+              <div className="p-5 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-display font-bold text-base text-[#191919]">
+                      {hotel.name}
+                    </h4>
+                    <button
+                      onClick={() => setDetailModalItem({ type: 'hotel', data: hotel })}
+                      className="text-neutral-400 hover:text-[#344E27] p-1"
+                      title="View Stay Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-neutral-500 flex items-center gap-1 mt-1">
+                    <MapPin className="w-3 h-3 text-[#344E27]" />
+                    {hotel.location}
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {hotel.amenities.map((am, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-md bg-neutral-100 text-[10px] text-neutral-600 font-medium"
+                      >
+                        {am}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price & Selection Button */}
+                <div className="mt-5 pt-4 border-t border-neutral-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block">Per Night</span>
+                    <span className="font-display font-extrabold text-lg text-[#191919]">
+                      {formatCurrency(hotel.pricePerNight, currency)}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      onSelectHotel(hotel);
+                      showToast(`Selected "${hotel.name}" as your active stay`);
+                    }}
+                    className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      hotel.selected
+                        ? 'bg-[#344E27] text-white shadow-xs'
+                        : 'bg-[#E5ECE0] hover:bg-[#344E27] text-[#344E27] hover:text-white'
+                    }`}
+                  >
+                    {hotel.selected ? 'Selected Stay' : 'Select Stay'}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* TOURIST ATTRACTIONS SECTION */}
+      {/* ========================================================================= */}
+      <section className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
+              Must-Visit Sights
+            </span>
+            <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-0.5">
+              Top Tourist Attractions
+            </h2>
+          </div>
+
+          {/* Place Category Filter */}
+          <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-full self-start sm:self-auto">
+            {['all', 'Beach', 'Heritage', 'Nature', 'Market'].map(cat => (
+              <button
+                key={cat}
+                onClick={() => setPlaceFilter(cat)}
+                className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer ${
+                  placeFilter === cat
+                    ? 'bg-[#344E27] text-white shadow-2xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                {cat === 'all' ? 'All Sights' : cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {filteredPlaces.map((place) => (
+            <div
+              key={place.id}
+              className="bg-white rounded-[24px] overflow-hidden border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
+            >
+              <div className="relative h-44 overflow-hidden bg-neutral-100">
+                <img
+                  src={place.image}
+                  alt={place.name}
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute top-2.5 left-2.5 bg-[#344E27]/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-white uppercase">
+                  {place.category}
+                </div>
+                <div className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
+                  <span>{place.rating}</span>
+                </div>
+              </div>
+
+              <div className="p-5 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-display font-bold text-base text-[#191919]">
+                      {place.name}
+                    </h4>
+                    <button
+                      onClick={() => setDetailModalItem({ type: 'place', data: place })}
+                      className="text-neutral-400 hover:text-[#344E27] p-1"
+                      title="View Attraction Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    {place.location} • {place.estimatedDuration}
+                  </p>
+                  <p className="text-xs text-neutral-600 mt-1.5 line-clamp-2">
+                    {place.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#191919]">
+                    {place.entryCost === 0 ? 'Free Entry' : formatCurrency(place.entryCost, currency)}
+                  </span>
+
+                  <button
+                    onClick={() => {
+                      onTogglePlace(place.id);
+                      showToast(place.added ? `Removed "${place.name}" from itinerary` : `Added "${place.name}" to itinerary`);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                      place.added
+                        ? 'bg-[#344E27] text-white'
+                        : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                    }`}
+                  >
+                    {place.added ? 'In Itinerary' : '+ Add Place'}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* RESTAURANT SECTION */}
+      {/* ========================================================================= */}
+      <section className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
+              Culinary Highlights
+            </span>
+            <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-0.5">
+              AI Recommended Restaurants
+            </h2>
+          </div>
+
+          {/* Restaurant Filter */}
+          <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-full self-start sm:self-auto">
+            {['all', '$$', '$$$', 'Seafood'].map(cat => (
+              <button
+                key={cat}
+                onClick={() => setRestFilter(cat)}
+                className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer ${
+                  restFilter === cat
+                    ? 'bg-[#344E27] text-white shadow-2xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                {cat === 'all' ? 'All Dining' : cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {filteredRestaurants.map((rest) => (
+            <div
+              key={rest.id}
+              className="bg-white rounded-[24px] overflow-hidden border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
+            >
+              <div className="relative h-44 overflow-hidden bg-neutral-100">
+                <img
+                  src={rest.image}
+                  alt={rest.name}
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-[#344E27]">
+                  {rest.aiRecommendedBadge}
+                </div>
+                <div className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
+                  <span>{rest.rating}</span>
+                </div>
+              </div>
+
+              <div className="p-5 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-display font-bold text-base text-[#191919]">
+                      {rest.name}
+                    </h4>
+                    <button
+                      onClick={() => setDetailModalItem({ type: 'restaurant', data: rest })}
+                      className="text-neutral-400 hover:text-[#344E27] p-1"
+                      title="View Dining Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    {rest.cuisine} • {rest.priceLevel}
+                  </p>
+                  <p className="text-xs text-neutral-600 mt-2 font-medium">
+                    Specialty: {rest.specialty}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block">Avg Meal (2 Pax)</span>
+                    <span className="text-xs font-bold text-[#191919]">
+                      {formatCurrency(rest.averagePrice, currency)}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      onToggleRestaurant(rest.id);
+                      showToast(rest.added ? `Removed "${rest.name}" from dining list` : `Saved "${rest.name}" to trip dining list`);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                      rest.added
+                        ? 'bg-[#344E27] text-white'
+                        : 'bg-[#E5ECE0] hover:bg-[#344E27] text-[#344E27] hover:text-white'
+                    }`}
+                  >
+                    {rest.added ? 'Added' : 'Add to Trip'}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FEATURE 6: TRAVEL SAFETY & LOCAL GUIDANCE */}
+      <div id="section-safety">
+        <TravelSafetySection destination={trip.destination} />
+      </div>
+
+      {/* SMART REPLAN MODAL */}
+      <SmartReplanModal
+        isOpen={isSmartReplanOpen}
+        onClose={() => {
+          setIsSmartReplanOpen(false);
+          setReplanPresetDisruption(undefined);
+        }}
+        trip={trip}
+        activeDayNumber={activeDay}
+        initialDisruptionType={replanPresetDisruption}
+        onApplySuggestion={handleApplyReplanSuggestion}
+      />
+
+      {/* ========================================================================= */}
+      {/* SHARE & EXPORT MODAL */}
+      {/* ========================================================================= */}
+      {isShareModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-neutral-200 animate-in fade-in zoom-in-95 duration-150 space-y-6">
+            
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-lg text-[#191919]">
+                    Share & Export Itinerary
+                  </h3>
+                  <span className="text-xs text-neutral-400">Export calendar, copy text briefing, or print</span>
+                </div>
+              </div>
+              <button onClick={() => setIsShareModalOpen(false)} className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Option 1: Calendar Download */}
+              <button
+                onClick={handleDownloadCalendar}
+                className="w-full p-4 rounded-2xl bg-neutral-50 hover:bg-[#E5ECE0] border border-neutral-200 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <CalendarDays className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs sm:text-sm text-[#191919] block">
+                      Export to Calendar (.ics)
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Sync all {trip.days} days with Google Calendar, Apple Calendar or Outlook
+                    </span>
+                  </div>
+                </div>
+                <Download className="w-4 h-4 text-neutral-400 group-hover:text-[#344E27]" />
+              </button>
+
+              {/* Option 2: Copy Text Briefing */}
+              <button
+                onClick={handleCopyItinerary}
+                className="w-full p-4 rounded-2xl bg-neutral-50 hover:bg-[#E5ECE0] border border-neutral-200 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <Copy className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs sm:text-sm text-[#191919] block">
+                      Copy Formatted Summary
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Perfect for pasting into WhatsApp group or Email to co-travelers
+                    </span>
+                  </div>
+                </div>
+                <Copy className="w-4 h-4 text-neutral-400 group-hover:text-[#344E27]" />
+              </button>
+
+              {/* Option 3: Print Sheet */}
+              <button
+                onClick={() => {
+                  setIsShareModalOpen(false);
+                  window.print();
+                }}
+                className="w-full p-4 rounded-2xl bg-neutral-50 hover:bg-[#E5ECE0] border border-neutral-200 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                    <Printer className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs sm:text-sm text-[#191919] block">
+                      Print / Save as PDF
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      Formatted physical printout with daily schedule
+                    </span>
+                  </div>
+                </div>
+                <Printer className="w-4 h-4 text-neutral-400 group-hover:text-[#344E27]" />
+              </button>
+            </div>
+
+            <div className="pt-2 text-center">
+              <button
+                onClick={() => setIsShareModalOpen(false)}
+                className="w-full py-2.5 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ITEM DETAIL MODAL (HOTEL, PLACE, RESTAURANT) */}
+      {/* ========================================================================= */}
+      {detailModalItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] max-w-lg w-full overflow-hidden shadow-2xl border border-neutral-200 animate-in fade-in zoom-in-95 duration-150 space-y-4">
+            
+            {/* Image */}
+            <div className="relative h-56 w-full bg-neutral-100">
+              <img
+                src={detailModalItem.data.image}
+                alt={detailModalItem.data.name}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <button
+                onClick={() => setDetailModalItem(null)}
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-[#344E27] capitalize">
+                {detailModalItem.type} Details
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 pt-0">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-display font-extrabold text-xl text-[#191919]">
+                    {detailModalItem.data.name}
+                  </h3>
+                  <p className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#344E27]" />
+                    {detailModalItem.data.location}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-full text-xs font-bold text-amber-800 border border-amber-200">
+                  <Star className="w-3.5 h-3.5 fill-[#F59E0B] text-[#F59E0B]" />
+                  <span>{detailModalItem.data.rating}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-neutral-600 leading-relaxed">
+                {detailModalItem.data.description || detailModalItem.data.specialty || 'Curated recommendation for your trip.'}
+              </p>
+
+              {/* Specific info */}
+              {detailModalItem.type === 'hotel' && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailModalItem.data.amenities?.map((am: string, i: number) => (
+                      <span key={i} className="px-2.5 py-1 rounded-lg bg-neutral-100 text-[11px] text-neutral-700 font-medium">
+                        ✓ {am}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-[#E5ECE0]/60 border border-[#344E27]/20 flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#344E27]">Room Price</span>
+                    <span className="font-display font-extrabold text-base text-[#191919]">
+                      {formatCurrency(detailModalItem.data.pricePerNight, currency)} / night
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {detailModalItem.type === 'place' && (
+                <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 flex items-center justify-between text-xs">
+                  <span className="font-bold text-neutral-600">Duration: {detailModalItem.data.estimatedDuration}</span>
+                  <span className="font-extrabold text-[#191919]">
+                    {detailModalItem.data.entryCost === 0 ? 'Free Entry' : formatCurrency(detailModalItem.data.entryCost, currency)}
+                  </span>
+                </div>
+              )}
+
+              {detailModalItem.type === 'restaurant' && (
+                <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200 flex items-center justify-between text-xs">
+                  <span className="font-bold text-neutral-600">Cuisine: {detailModalItem.data.cuisine}</span>
+                  <span className="font-extrabold text-[#191919]">
+                    Avg ~ {formatCurrency(detailModalItem.data.averagePrice, currency)}
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={() => setDetailModalItem(null)}
+                className="w-full py-2.5 rounded-full bg-[#344E27] hover:bg-[#273D1C] text-white font-extrabold text-xs transition-colors cursor-pointer"
+              >
+                Close Details
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

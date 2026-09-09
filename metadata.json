@@ -1,0 +1,6 @@
+{
+  "name": "Travelia AI - Intelligent Travel Planner",
+  "description": "A modern, premium AI-powered travel planning platform inspired by high-end design aesthetics. Plan complete itineraries, discover stays, estimate budgets, and explore destinations with AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
