@@ -41,7 +41,7 @@ interface FlightBookingModalProps {
   outboundFlight: FlightSegment;
   returnFlight: FlightSegment;
   onBookingComplete: (booking: FlightBookingRecord) => void;
-  onToast: (message: string) => void;
+  onToast?: (message: string) => void;
 }
 
 export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
@@ -54,6 +54,12 @@ export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
   onBookingComplete,
   onToast
 }) => {
+  const notify = (msg: string) => {
+    if (typeof onToast === 'function') {
+      onToast(msg);
+    }
+  };
+
   // Step tracker: 1=Travelers, 2=Seats, 3=Addons, 4=Payment, 5=Confirmation
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -199,11 +205,11 @@ export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
     if (cleaned === 'TRAVELIA500' || cleaned === 'FLY500') {
       setAppliedPromo({ code: cleaned, discount: 500 });
       setPromoError(null);
-      onToast(`Promo code ${cleaned} applied! Saved ₹500`);
+      notify(`Promo code ${cleaned} applied! Saved ₹500`);
     } else if (cleaned === 'FLYGOA' || cleaned === 'BEACH1000') {
       setAppliedPromo({ code: cleaned, discount: 1000 });
       setPromoError(null);
-      onToast(`Super promo ${cleaned} applied! Saved ₹1,000`);
+      notify(`Super promo ${cleaned} applied! Saved ₹1,000`);
     } else if (!cleaned) {
       setPromoError('Please enter a voucher code');
     } else {
@@ -214,7 +220,7 @@ export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
   // Add / remove passenger
   const handleAddPassenger = () => {
     if (passengers.length >= 6) {
-      onToast('Maximum 6 passengers per single transaction');
+      notify('Maximum 6 passengers per single transaction');
       return;
     }
     const newIdx = passengers.length + 1;
@@ -231,12 +237,12 @@ export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
       mealPreference: 'Standard Vegetarian'
     };
     setPassengers([...passengers, newPax]);
-    onToast(`Added Passenger ${newIdx}`);
+    notify(`Added Passenger ${newIdx}`);
   };
 
   const handleRemovePassenger = (id: string) => {
     if (passengers.length <= 1) {
-      onToast('At least one traveler is required');
+      notify('At least one traveler is required');
       return;
     }
     setPassengers(passengers.filter(p => p.id !== id));
@@ -321,7 +327,7 @@ export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
         });
       } catch (e) {}
 
-      onToast(`Flight booked successfully! PNR: ${generatedPnr}`);
+      notify(`Flight booked successfully! PNR: ${generatedPnr}`);
     }, 1400);
   };
 
@@ -358,7 +364,7 @@ export const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    onToast('E-Ticket & Tax Invoice downloaded successfully!');
+    notify('E-Ticket & Tax Invoice downloaded successfully!');
   };
 
   return (
