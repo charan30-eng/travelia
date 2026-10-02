@@ -23,10 +23,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Map,
-  Luggage,
   ShieldCheck,
-  Activity,
-  CloudSun,
   Printer,
   Copy,
   Download,
@@ -46,14 +43,13 @@ import {
   Square,
   BadgeCheck
 } from 'lucide-react';
-import { TripPlan, Hotel, Restaurant, TouristPlace, Currency, SmartReplanSuggestion, HealthScoreImprovement, ItineraryActivity } from '../types';
+import { TripPlan, Hotel, Restaurant, TouristPlace, Currency, SmartReplanSuggestion, HealthScoreImprovement, ItineraryActivity, BudgetBreakdown } from '../types';
 import { formatCurrency } from '../data/mockData';
+import { getFlightDataForDestination } from '../data/flightData';
+import { detectCountryFromDestination, formatINR, formatForeign, CountryCurrencyInfo } from '../data/currencyHelper';
 import { SmartReplanModal } from './SmartReplanModal';
 import { TripMapView } from './TripMapView';
 import { GroupTripSection } from './GroupTripSection';
-import { PackingAssistantSection } from './PackingAssistantSection';
-import { WeatherWidgetStrip } from './WeatherWidgetStrip';
-import { TripHealthScoreCard } from './TripHealthScoreCard';
 import { TravelSafetySection } from './TravelSafetySection';
 import { EstimatedBudgetSection } from './EstimatedBudgetSection';
 import { TripFlightsSection } from './TripFlightsSection';
@@ -64,7 +60,7 @@ interface TripDashboardViewProps {
   onRegenerate: () => void;
   onEdit: () => void;
   onSaveTrip: (trip: TripPlan) => void;
-  onViewBudget: () => void;
+  onViewBudget: (subTab?: 'itemized' | 'calculator' | 'optimizer' | 'splitter') => void;
   onSelectHotel: (hotel: Hotel) => void;
   onTogglePlace: (placeId: string) => void;
   onToggleRestaurant: (restId: string) => void;
@@ -73,6 +69,13 @@ interface TripDashboardViewProps {
   onApplyHealthImprovement?: (improvement: HealthScoreImprovement) => void;
   currency: Currency;
   isSaved?: boolean;
+  selectedCountry?: CountryCurrencyInfo;
+  onSelectCountry?: (country: CountryCurrencyInfo) => void;
+  flightCabinClass?: 'economy' | 'premium' | 'business';
+  onSelectFlightCabinClass?: (cabin: 'economy' | 'premium' | 'business') => void;
+  includeFlights?: boolean;
+  onToggleIncludeFlights?: (include: boolean) => void;
+  onUpdateBudget?: (newBudget: BudgetBreakdown, controls?: Partial<TripPlan>) => void;
 }
 
 export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
@@ -89,11 +92,67 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
   onApplyHealthImprovement,
   currency,
   isSaved = false,
+  selectedCountry,
+  onSelectCountry,
+  flightCabinClass = 'economy',
+  onSelectFlightCabinClass,
+  includeFlights = true,
+  onToggleIncludeFlights,
+  onUpdateBudget,
 }) => {
   const [activeDay, setActiveDay] = useState<number>(1);
   const [justSaved, setJustSaved] = useState(isSaved);
   const [isSmartReplanOpen, setIsSmartReplanOpen] = useState(false);
   const [replanPresetDisruption, setReplanPresetDisruption] = useState<string | undefined>(undefined);
+
+  // Dynamic flight package matching trip destination (Korea, Japan, Paris, Goa, etc.)
+  const flightData = useMemo(() => {
+    return getFlightDataForDestination(trip.destination);
+  }, [trip.destination]);
+
+  // Destination Country & Currency Information for Dual-Currency Display (synced with App)
+  const destinationCountry = useMemo(() => {
+    return selectedCountry || detectCountryFromDestination(trip.destination, trip.country);
+  }, [selectedCountry, trip.destination, trip.country]);
+
+  // Unified Flight & Airfare Calculation (Identical across Dashboard & Budget Studio)
+  const baseRoundtripAirfarePerTraveler = useMemo(() => {
+    return (flightData.outboundFlight?.pricePerPerson || 3850) + (flightData.returnFlight?.pricePerPerson || 4120);
+  }, [flightData]);
+
+  const cabinMultiplier = flightCabinClass === 'business' ? 2.3 : flightCabinClass === 'premium' ? 1.45 : 1.0;
+  const flightPerPersonEffective = Math.round(baseRoundtripAirfarePerTraveler * cabinMultiplier);
+  const totalAirfareCost = includeFlights ? flightPerPersonEffective * (trip.travelers || 2) : 0;
+
+  // Unified Non-flight total & Grand Total with Airfare
+  const nonFlightCategoriesTotal = (trip.budget.hotel || 0) + (trip.budget.food || 0) + (trip.budget.transportation || 0) + (trip.budget.activities || 0) + (trip.budget.miscellaneous || 0);
+  const totalTripBudgetWithAirfare = nonFlightCategoriesTotal + totalAirfareCost;
+
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('ring-4', 'ring-[#344E27]/40', 'rounded-3xl', 'transition-all');
+      setTimeout(() => {
+        el.classList.remove('ring-4', 'ring-[#344E27]/40');
+      }, 1800);
+    }
+  };
+
+  const handleFlightTabClick = () => {
+    scrollToSection('section-flights');
+    showToast(`Viewing ${flightData.outboundFlight.originCode} ➔ ${flightData.outboundFlight.destinationCode} Flights & Boarding Passes`);
+  };
+
+  const handleBudgetTabClick = () => {
+    const el = document.getElementById('section-budget');
+    if (el) {
+      scrollToSection('section-budget');
+      showToast(`Connected to Estimated Budget: ₹ INR & ${destinationCountry.flag} ${destinationCountry.currencyCode} (${includeFlights ? `${flightCabinClass.toUpperCase()} Airfare Included` : 'Flights Excluded'})`);
+    } else {
+      onViewBudget('itemized');
+    }
+  };
 
   // Trip Status
   const [tripStatus, setTripStatus] = useState<'planning' | 'confirmed' | 'active' | 'completed'>('planning');
@@ -121,11 +180,6 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
     type: 'hotel' | 'place' | 'restaurant';
     data: any;
   } | null>(null);
-
-  // Custom User Notes
-  const [customNotes, setCustomNotes] = useState<string[]>(trip.aiNotes || []);
-  const [newNoteInput, setNewNoteInput] = useState('');
-  const [showAddNote, setShowAddNote] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -158,13 +212,36 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
     }
   };
 
-  const handleApplyHealth = (improvement: HealthScoreImprovement) => {
-    if (onApplyHealthImprovement) {
-      onApplyHealthImprovement(improvement);
-    }
-  };
-
   const handleApplyRouteOptimization = (dayNumber: number, optimizedOrder: string[]) => {
+    if (onSaveTrip && optimizedOrder && optimizedOrder.length > 0) {
+      const updatedItinerary = trip.itinerary.map(day => {
+        if (day.dayNumber === dayNumber) {
+          const actMap = new Map(day.activities.map(a => [a.id, a]));
+          const reorderedActivities: ItineraryActivity[] = [];
+          
+          optimizedOrder.forEach(id => {
+            const act = actMap.get(id);
+            if (act) {
+              reorderedActivities.push(act);
+              actMap.delete(id);
+            }
+          });
+          actMap.forEach(act => reorderedActivities.push(act));
+
+          return {
+            ...day,
+            activities: reorderedActivities
+          };
+        }
+        return day;
+      });
+
+      onSaveTrip({
+        ...trip,
+        itinerary: updatedItinerary
+      });
+    }
+
     try {
       confetti({
         particleCount: 40,
@@ -195,21 +272,6 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
       }
       return next;
     });
-  };
-
-  // Add Custom Note
-  const handleAddNote = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNoteInput.trim()) return;
-    setCustomNotes(prev => [...prev, newNoteInput.trim()]);
-    setNewNoteInput('');
-    setShowAddNote(false);
-    showToast('Added new custom trip note');
-  };
-
-  const handleDeleteNote = (index: number) => {
-    setCustomNotes(prev => prev.filter((_, i) => i !== index));
-    showToast('Note deleted');
   };
 
   // Copy Itinerary Text
@@ -430,49 +492,100 @@ END:VCALENDAR`;
             </p>
           </div>
 
-          {/* Quick Flight & Budget Summary Pills */}
+          {/* Quick Flight & Budget Summary Interactive Tabs */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <a
-              href="#section-flights"
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 transition-all flex items-center justify-between gap-4 group shadow-lg"
+            <button
+              id="hero-flight-tab-btn"
+              onClick={handleFlightTabClick}
+              title="Click to view live flight logistics & boarding passes"
+              className="bg-white/10 hover:bg-white/20 active:scale-[0.98] backdrop-blur-md p-4 rounded-2xl border border-white/20 hover:border-emerald-400/60 transition-all flex items-center justify-between gap-5 group shadow-lg text-left cursor-pointer"
             >
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] uppercase font-bold text-neutral-300 block">Roundtrip Flight</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold uppercase tracking-wider ml-1">
+                    Live Route
+                  </span>
                 </div>
-                <span className="font-display font-extrabold text-xl text-white">
-                  BOM ➔ GOX
+                <span className="font-display font-extrabold text-xl text-white block mt-0.5">
+                  {flightData.outboundFlight.originCode} ➔ {flightData.outboundFlight.destinationCode}
                 </span>
                 <span className="text-[11px] text-emerald-300 font-semibold block">
-                  IndiGo 6E-2041 • On Time
+                  {flightData.outboundFlight.airline} {flightData.outboundFlight.flightNumber} • {flightData.outboundFlight.status === 'on-time' ? 'On Time' : 'Confirmed'}
                 </span>
               </div>
-              <div className="w-9 h-9 rounded-full bg-white/20 group-hover:bg-white/30 flex items-center justify-center text-white transition-all group-hover:scale-105">
-                <Plane className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-full bg-white/20 group-hover:bg-emerald-600 flex items-center justify-center text-white transition-all group-hover:scale-110 shadow-sm shrink-0">
+                <Plane className="w-4 h-4 group-hover:rotate-12 transition-transform" />
               </div>
-            </a>
+            </button>
 
-            <a
-              href="#section-budget"
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md p-4 rounded-2xl border border-white/20 transition-all flex items-center justify-between gap-6 group shadow-lg"
-            >
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase font-bold text-neutral-300 block">Estimated Budget</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="flex flex-col gap-1.5">
+              <button
+                id="hero-budget-tab-btn"
+                onClick={handleBudgetTabClick}
+                title="Click to view Estimated Budget Breakdown in Dual Currency with Flights"
+                className="bg-white/10 hover:bg-white/20 active:scale-[0.98] backdrop-blur-md p-4 rounded-2xl border border-white/20 hover:border-emerald-400/60 transition-all flex items-center justify-between gap-5 group shadow-lg text-left cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold text-neutral-300 block">Estimated Budget</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold uppercase tracking-wider ml-1">
+                      {destinationCountry.flag} Dual FX + {includeFlights ? `${flightCabinClass.toUpperCase()}` : 'No Flights'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
+                    <span className="font-display font-extrabold text-2xl text-white">
+                      {formatINR(totalTripBudgetWithAirfare)}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-300">
+                      ≈ {formatForeign(totalTripBudgetWithAirfare, destinationCountry)}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-neutral-300 font-semibold block mt-0.5">
+                    ~ {formatINR(Math.round(totalTripBudgetWithAirfare / trip.travelers))} ({formatForeign(Math.round(totalTripBudgetWithAirfare / trip.travelers), destinationCountry)}) / person
+                  </span>
                 </div>
-                <span className="font-display font-extrabold text-2xl text-white">
-                  {formatCurrency(trip.budget.total, currency)}
-                </span>
-                <span className="text-[11px] text-emerald-300 font-semibold block">
-                  ~ {formatCurrency(Math.round(trip.budget.total / trip.travelers), currency)} / person
-                </span>
+                <div className="w-9 h-9 rounded-full bg-[#344E27] group-hover:bg-[#273D1C] flex items-center justify-center text-white transition-all group-hover:scale-110 shadow-sm shrink-0">
+                  <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </div>
+              </button>
+
+              {/* Connected Budget Tabs Quick Jump Bridge */}
+              <div className="flex items-center gap-1.5 overflow-x-auto px-1 py-0.5 text-[10px] font-bold">
+                <button
+                  onClick={() => scrollToSection('section-budget')}
+                  className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/25 text-neutral-200 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  ⬇️ In-Page Breakdown
+                </button>
+                <button
+                  onClick={() => onViewBudget('itemized')}
+                  className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/25 text-neutral-200 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  🧾 Line Audit
+                </button>
+                <button
+                  onClick={() => onViewBudget('calculator')}
+                  className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/25 text-neutral-200 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  🎛️ Simulator
+                </button>
+                <button
+                  onClick={() => onViewBudget('optimizer')}
+                  className="px-2 py-0.5 rounded-md bg-amber-400/20 hover:bg-amber-400/35 text-amber-200 transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  ✨ AI Optimizer
+                </button>
+                <button
+                  onClick={() => onViewBudget('splitter')}
+                  className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/25 text-neutral-200 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  👥 Splitter
+                </button>
               </div>
-              <div className="w-9 h-9 rounded-full bg-[#344E27] group-hover:bg-[#273D1C] flex items-center justify-center text-white transition-all group-hover:scale-105">
-                <ArrowUpRight className="w-4 h-4" />
-              </div>
-            </a>
+            </div>
           </div>
         </div>
 
@@ -519,12 +632,12 @@ END:VCALENDAR`;
 
         <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-2xs flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
-            <Activity className="w-5 h-5" />
+            <Calendar className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Trip Health</span>
-            <span className="font-display font-extrabold text-lg text-emerald-800">
-              92 / 100 (Optimal)
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Duration</span>
+            <span className="font-display font-extrabold text-lg text-[#191919]">
+              {trip.days}D / {trip.nights}N
             </span>
           </div>
         </div>
@@ -532,186 +645,76 @@ END:VCALENDAR`;
       </div>
 
       {/* QUICK FEATURE NAVIGATION JUMP-BAR */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        <a
-          href="#section-budget"
-          className="p-3.5 rounded-2xl bg-white border border-[#344E27]/30 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <button
+          onClick={() => scrollToSection('section-budget')}
+          className="p-3.5 rounded-2xl bg-white border border-[#344E27]/30 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#344E27] text-white flex items-center justify-center group-hover:scale-105 transition-all">
+          <div className="w-8 h-8 rounded-xl bg-[#344E27] text-white flex items-center justify-center group-hover:scale-105 transition-all shrink-0">
             <DollarSign className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Estimate</span>
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Estimate ({destinationCountry.currencyCode})</span>
             <span className="text-xs font-extrabold text-[#344E27] truncate block">
-              {formatCurrency(trip.budget.total, currency)}
+              {formatINR(totalTripBudgetWithAirfare)}
             </span>
           </div>
-        </a>
+        </button>
 
-        <a
-          href="#section-flights"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        <button
+          onClick={() => scrollToSection('section-flights')}
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
             <Plane className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <span className="text-[10px] font-bold text-neutral-400 block uppercase">Aviation</span>
             <span className="text-xs font-extrabold text-[#191919] truncate block">Flights & Passes</span>
           </div>
-        </a>
+        </button>
 
-        <a
-          href="#section-weather"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        <button
+          onClick={() => scrollToSection('section-map')}
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
-            <CloudSun className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Forecast</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Weather Strip</span>
-          </div>
-        </a>
-
-        <a
-          href="#section-map"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
             <Map className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <span className="text-[10px] font-bold text-neutral-400 block uppercase">Visualizer</span>
             <span className="text-xs font-extrabold text-[#191919] truncate block">Route Map</span>
           </div>
-        </a>
+        </button>
 
-        <a
-          href="#section-health"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        <button
+          onClick={() => scrollToSection('section-group')}
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
-            <Activity className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">92 / 100</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Health Score</span>
-          </div>
-        </a>
-
-        <a
-          href="#section-group"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
             <Users className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">4 Members</span>
+            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Members</span>
             <span className="text-xs font-extrabold text-[#191919] truncate block">Group Hub</span>
           </div>
-        </a>
+        </button>
 
-        <a
-          href="#section-packing"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
+        <button
+          onClick={() => scrollToSection('section-safety')}
+          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
-            <Luggage className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Checklist</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">AI Packing</span>
-          </div>
-        </a>
-
-        <a
-          href="#section-safety"
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors">
+          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <span className="text-[10px] font-bold text-neutral-400 block uppercase">Safety & Intel</span>
             <span className="text-xs font-extrabold text-[#191919] truncate block">Emergency 112</span>
           </div>
-        </a>
+        </button>
       </div>
 
-      {/* FEATURE 1: WEATHER-AWARE PLANNING STRIP */}
-      <div id="section-weather">
-        <WeatherWidgetStrip
-          trip={trip}
-          activeDay={activeDay}
-          onSelectDay={(day) => setActiveDay(day)}
-          onTriggerWeatherReplan={(dayNum) => {
-            setActiveDay(dayNum);
-            handleOpenSmartReplanWithReason('bad_weather');
-          }}
-        />
-      </div>
 
-      {/* AI NOTES & CUSTOM TRAVEL MEMOS */}
-      <div className="bg-[#E5ECE0]/60 rounded-3xl p-5 sm:p-6 border border-[#344E27]/15 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-[#344E27] text-white flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-[#344E27] uppercase tracking-wider">AI Travel Optimizer Insights & Notes</h4>
-              <span className="text-[11px] text-neutral-500">Destination advisories, timing recommendations & your custom memos</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowAddNote(!showAddNote)}
-            className="px-3 py-1.5 rounded-full bg-white text-[#344E27] hover:bg-[#344E27] hover:text-white text-xs font-bold transition-all border border-[#344E27]/20 flex items-center gap-1 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Note</span>
-          </button>
-        </div>
-
-        {showAddNote && (
-          <form onSubmit={handleAddNote} className="flex gap-2 animate-in fade-in duration-150">
-            <input
-              type="text"
-              value={newNoteInput}
-              onChange={(e) => setNewNoteInput(e.target.value)}
-              placeholder="e.g. Remember to book sunset boat cruise tickets in advance..."
-              className="flex-1 px-4 py-2 rounded-xl bg-white border border-neutral-300 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#344E27]"
-              autoFocus
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-xl bg-[#344E27] text-white text-xs font-bold hover:bg-[#273D1C] cursor-pointer"
-            >
-              Save Note
-            </button>
-          </form>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
-          {customNotes.map((note, i) => (
-            <div key={i} className="bg-white/80 p-3 rounded-2xl border border-neutral-200/70 flex items-center justify-between text-xs text-[#191919] font-medium gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#344E27] shrink-0" />
-                <span className="truncate">{note}</span>
-              </div>
-              <button
-                onClick={() => handleDeleteNote(i)}
-                className="text-neutral-300 hover:text-red-500 transition-colors p-1"
-                title="Remove note"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* ========================================================================= */}
       {/* ITINERARY TIMELINE & ACTIVITY MASTER HUB */}
@@ -948,14 +951,7 @@ END:VCALENDAR`;
           activeDay={activeDay}
           onSelectDay={(day) => setActiveDay(day)}
           onApplyOptimizedRoute={handleApplyRouteOptimization}
-        />
-      </div>
-
-      {/* FEATURE 3: AI TRIP HEALTH SCORE CARD */}
-      <div id="section-health">
-        <TripHealthScoreCard
-          trip={trip}
-          onApplyImprovement={handleApplyHealth}
+          currency={currency}
         />
       </div>
 
@@ -964,17 +960,19 @@ END:VCALENDAR`;
         <GroupTripSection trip={trip} />
       </div>
 
-      {/* FEATURE 5: AI SMART PACKING ASSISTANT */}
-      <div id="section-packing">
-        <PackingAssistantSection trip={trip} />
-      </div>
-
       {/* FEATURE 6: ESTIMATED BUDGET & FINANCIAL INTELLIGENCE */}
       <EstimatedBudgetSection
         trip={trip}
         currency={currency}
         onViewFullBudget={onViewBudget}
         onToast={showToast}
+        selectedCountry={destinationCountry}
+        onSelectCountry={onSelectCountry}
+        flightCabinClass={flightCabinClass}
+        onSelectFlightCabinClass={onSelectFlightCabinClass}
+        includeFlights={includeFlights}
+        onToggleIncludeFlights={onToggleIncludeFlights}
+        onUpdateBudget={onUpdateBudget}
       />
 
       {/* FEATURE 7: FLIGHT BOOKINGS & AIRPORT INTELLIGENCE */}

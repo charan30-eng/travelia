@@ -1,4 +1,6 @@
 import { TripPlan, DestinationCardData, Currency, CurrencyRate } from '../types';
+import { getFlightDataForDestination } from './flightData';
+import { detectCountryFromDestination } from './currencyHelper';
 
 export const CURRENCY_RATES: Record<Currency, CurrencyRate> = {
   INR: { symbol: '₹', rateFromINR: 1 },
@@ -35,11 +37,12 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
   createdAt: '2026-08-16',
   budget: {
     hotel: 18000,
+    flights: 15940,
     food: 7500,
     transportation: 5000,
     activities: 6000,
     miscellaneous: 2000,
-    total: 38500,
+    total: 54440,
   },
   aiNotes: [
     'Optimal itinerary designed to balance tranquil South Goa heritage with scenic North Goa sunset viewpoints.',
@@ -589,11 +592,12 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
     createdAt: '2026-08-10',
     budget: {
       hotel: 24000,
+      flights: 16800,
       food: 11000,
       transportation: 8000,
       activities: 7000,
       miscellaneous: 2000,
-      total: 52000,
+      total: 68800,
     },
     aiNotes: ['Includes premium private air-conditioned houseboat cruise in Alleppey.'],
     itinerary: [],
@@ -635,11 +639,12 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
     createdAt: '2026-08-01',
     budget: {
       hotel: 22000,
+      flights: 14400,
       food: 9500,
       transportation: 6500,
       activities: 5500,
       miscellaneous: 2000,
-      total: 45500,
+      total: 59900,
     },
     aiNotes: ['Includes private camel safari sunset in Sam Sand Dunes.'],
     itinerary: [],
@@ -691,7 +696,12 @@ export const generateTripFromPrompt = (
   const transportBudget = 1000 * days;
   const activitiesBudget = 1200 * days * travelers;
   const miscBudget = 2000;
-  const total = hotelBudget + foodBudget + transportBudget + activitiesBudget + miscBudget;
+  
+  const detectedCountry = detectCountryFromDestination(destination);
+  const destFlightData = getFlightDataForDestination(destination, detectedCountry.countryName);
+  const flightPerPerson = (destFlightData.outboundFlight?.pricePerPerson || 3850) + (destFlightData.returnFlight?.pricePerPerson || 4120);
+  const flightBudget = flightPerPerson * travelers;
+  const total = hotelBudget + flightBudget + foodBudget + transportBudget + activitiesBudget + miscBudget;
 
   const generatedItinerary = Array.from({ length: days }).map((_, i) => ({
     dayNumber: i + 1,
@@ -741,7 +751,7 @@ export const generateTripFromPrompt = (
   return {
     id: `trip-${Date.now()}`,
     destination: destination || 'Custom Trip',
-    country: 'International',
+    country: detectedCountry.countryName,
     tagline,
     heroImage,
     days,
@@ -757,6 +767,7 @@ export const generateTripFromPrompt = (
     createdAt: new Date().toISOString().split('T')[0],
     budget: {
       hotel: hotelBudget,
+      flights: flightBudget,
       food: foodBudget,
       transportation: transportBudget,
       activities: activitiesBudget,

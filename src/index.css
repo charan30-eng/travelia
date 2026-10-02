@@ -1,6 +1,11 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', sans-serif;
     color: #191919;
@@ -10,6 +15,10 @@
   h1, h2, h3, .font-display {
     font-family: 'Syne', 'Plus Jakarta Sans', sans-serif;
     letter-spacing: -0.02em;
+  }
+
+  [id^="section-"] {
+    scroll-margin-top: 5rem;
   }
 }
 
@@ -34,4 +43,45 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
 }
+
+/* Leaflet Custom Marker & Popup Enhancements */
+.leaflet-popup-content-wrapper {
+  background: #1A2619 !important;
+  color: #FFFFFF !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(163, 230, 53, 0.3) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4) !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-tip {
+  background: #1A2619 !important;
+}
+
+.leaflet-container {
+  font-family: inherit;
+  background-color: #152014 !important;
+}
+
+/* Aesthetic Animated Travel Path Polyline */
+@keyframes travelPathFlow {
+  from {
+    stroke-dashoffset: 44;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.aesthetic-travel-path {
+  animation: travelPathFlow 1.6s linear infinite !important;
+  pointer-events: none !important;
+  filter: drop-shadow(0 0 5px rgba(163, 230, 53, 0.9));
+}
+
+.aesthetic-ambient-glow {
+  pointer-events: none !important;
+  filter: blur(2.5px);
+}
+
 

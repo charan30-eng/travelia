@@ -80,6 +80,7 @@ export interface Restaurant {
 
 export interface BudgetBreakdown {
   hotel: number;
+  flights?: number;
   food: number;
   transportation: number;
   activities: number;

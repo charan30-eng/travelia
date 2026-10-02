@@ -31,9 +31,9 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 ];
 
 const SUGGESTED_QUESTIONS = [
-  'How is my AI Trip Health Score?',
-  'Replan Day 2 activities for afternoon rain',
-  'What should I pack for this trip?',
+  'What are the must-see attractions?',
+  'Replan Day 2 activities for evening',
+  'Can you recommend authentic local dining?',
   'Can you reduce the total trip cost?',
   'What are local customs & emergency numbers?'
 ];

@@ -24,6 +24,7 @@ import {
 } from './data/mockData';
 import { Sparkles, MessageSquare, Bot } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { CountryCurrencyInfo, detectCountryFromDestination } from './data/currencyHelper';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
@@ -31,12 +32,27 @@ export default function App() {
   const [currentTrip, setCurrentTrip] = useState<TripPlan>(DEFAULT_GOA_TRIP);
   const [savedTrips, setSavedTrips] = useState<TripPlan[]>(INITIAL_SAVED_TRIPS);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [plannerDestination, setPlannerDestination] = useState<string>('Goa, India');
+  const [plannerDestination, setPlannerDestination] = useState<string>('');
+
+  // Shared Budget, Flight & Currency State connecting ALL budget tabs
+  const [selectedCountry, setSelectedCountry] = useState<CountryCurrencyInfo>(() =>
+    detectCountryFromDestination(DEFAULT_GOA_TRIP.destination, DEFAULT_GOA_TRIP.country)
+  );
+  const [flightCabinClass, setFlightCabinClass] = useState<'economy' | 'premium' | 'business'>('economy');
+  const [includeFlights, setIncludeFlights] = useState<boolean>(true);
+  const [budgetSubTab, setBudgetSubTab] = useState<'itemized' | 'calculator' | 'optimizer' | 'splitter'>('itemized');
 
   // Modals & Panels
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [isAddActivityOpen, setIsAddActivityOpen] = useState<boolean>(false);
   const [activeActivityDay, setActiveActivityDay] = useState<number>(1);
+
+  const handleViewBudget = (subTab?: 'itemized' | 'calculator' | 'optimizer' | 'splitter') => {
+    if (subTab) {
+      setBudgetSubTab(subTab);
+    }
+    setActiveTab('budget');
+  };
 
   // Generate trip handler
   const handleGenerateTrip = (
@@ -50,6 +66,7 @@ export default function App() {
     setTimeout(() => {
       const generated = generateTripFromPrompt(destination, days, travelers, preferences);
       setCurrentTrip(generated);
+      setSelectedCountry(detectCountryFromDestination(generated.destination, generated.country));
       setIsGenerating(false);
       setActiveTab('dashboard');
 
@@ -65,9 +82,7 @@ export default function App() {
 
   // Start planning from Home / Discover with optional prefilled destination
   const handleStartPlanning = (dest?: string) => {
-    if (dest) {
-      setPlannerDestination(dest);
-    }
+    setPlannerDestination(dest || '');
     setActiveTab('planner');
   };
 
@@ -98,6 +113,7 @@ export default function App() {
   // Open Saved Trip into active Dashboard
   const handleOpenTrip = (trip: TripPlan) => {
     setCurrentTrip(trip);
+    setSelectedCountry(detectCountryFromDestination(trip.destination, trip.country));
     setActiveTab('dashboard');
   };
 
@@ -110,7 +126,8 @@ export default function App() {
       }));
 
       const newHotelBudget = hotel.pricePerNight * prev.nights;
-      const newTotal = newHotelBudget + prev.budget.food + prev.budget.transportation + prev.budget.activities + prev.budget.miscellaneous;
+      const flightCost = prev.budget.flights || 0;
+      const newTotal = newHotelBudget + flightCost + prev.budget.food + prev.budget.transportation + prev.budget.activities + prev.budget.miscellaneous;
 
       return {
         ...prev,
@@ -118,6 +135,7 @@ export default function App() {
         budget: {
           ...prev.budget,
           hotel: newHotelBudget,
+          flights: flightCost,
           total: newTotal
         }
       };
@@ -259,7 +277,12 @@ export default function App() {
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={(tab) => {
+          if (tab === 'planner') {
+            setPlannerDestination('');
+          }
+          setActiveTab(tab);
+        }}
         currency={currency}
         onSelectCurrency={setCurrency}
         savedTripsCount={savedTrips.length}
@@ -292,7 +315,7 @@ export default function App() {
               setActiveTab('planner');
             }}
             onSaveTrip={handleSaveTrip}
-            onViewBudget={() => setActiveTab('budget')}
+            onViewBudget={handleViewBudget}
             onSelectHotel={handleSelectHotel}
             onTogglePlace={handleTogglePlace}
             onToggleRestaurant={handleToggleRestaurant}
@@ -301,6 +324,13 @@ export default function App() {
             onApplyHealthImprovement={handleApplyHealthImprovement}
             currency={currency}
             isSaved={savedTrips.some((t) => t.id === currentTrip.id)}
+            selectedCountry={selectedCountry}
+            onSelectCountry={setSelectedCountry}
+            flightCabinClass={flightCabinClass}
+            onSelectFlightCabinClass={setFlightCabinClass}
+            includeFlights={includeFlights}
+            onToggleIncludeFlights={setIncludeFlights}
+            onUpdateBudget={handleUpdateBudget}
           />
         )}
 
@@ -309,6 +339,15 @@ export default function App() {
             trip={currentTrip}
             onUpdateBudget={handleUpdateBudget}
             currency={currency}
+            onBackToDashboard={() => setActiveTab('dashboard')}
+            selectedCountry={selectedCountry}
+            onSelectCountry={setSelectedCountry}
+            flightCabinClass={flightCabinClass}
+            onSelectFlightCabinClass={setFlightCabinClass}
+            includeFlights={includeFlights}
+            onToggleIncludeFlights={setIncludeFlights}
+            initialSubTab={budgetSubTab}
+            onSelectSubTab={setBudgetSubTab}
           />
         )}
 

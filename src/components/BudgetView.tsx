@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   DollarSign, 
   Building2, 
@@ -21,15 +21,27 @@ import {
   Plane, 
   ShoppingBag, 
   ArrowRight,
+  ArrowLeft,
   PieChart,
   Layers,
   FileSpreadsheet,
   BadgeCheck,
   ChevronRight,
-  ShieldCheck
+  ChevronDown,
+  ShieldCheck,
+  Globe,
+  ArrowLeftRight
 } from 'lucide-react';
 import { TripPlan, BudgetBreakdown, Currency, CustomBudgetItem } from '../types';
 import { formatCurrency } from '../data/mockData';
+import { 
+  CountryCurrencyInfo, 
+  SUPPORTED_DESTINATION_COUNTRIES, 
+  detectCountryFromDestination, 
+  formatINR, 
+  formatForeign 
+} from '../data/currencyHelper';
+import { getFlightDataForDestination } from '../data/flightData';
 import { GroupExpenseSplitter } from './GroupExpenseSplitter';
 import confetti from 'canvas-confetti';
 
@@ -37,15 +49,66 @@ interface BudgetViewProps {
   trip: TripPlan;
   onUpdateBudget: (newBudget: BudgetBreakdown, controls: Partial<TripPlan>) => void;
   currency: Currency;
+  onBackToDashboard?: () => void;
+  selectedCountry?: CountryCurrencyInfo;
+  onSelectCountry?: (country: CountryCurrencyInfo) => void;
+  flightCabinClass?: 'economy' | 'premium' | 'business';
+  onSelectFlightCabinClass?: (cabin: 'economy' | 'premium' | 'business') => void;
+  includeFlights?: boolean;
+  onToggleIncludeFlights?: (include: boolean) => void;
+  initialSubTab?: 'itemized' | 'calculator' | 'optimizer' | 'splitter';
+  onSelectSubTab?: (subTab: 'itemized' | 'calculator' | 'optimizer' | 'splitter') => void;
 }
 
 export const BudgetView: React.FC<BudgetViewProps> = ({
   trip,
   onUpdateBudget,
   currency,
+  onBackToDashboard,
+  selectedCountry: selectedCountryProp,
+  onSelectCountry: onSelectCountryProp,
+  flightCabinClass: flightCabinClassProp,
+  onSelectFlightCabinClass: onSelectFlightCabinClassProp,
+  includeFlights: includeFlightsProp,
+  onToggleIncludeFlights: onToggleIncludeFlightsProp,
+  initialSubTab,
+  onSelectSubTab,
 }) => {
   // Main Tab: 'itemized' | 'calculator' | 'optimizer' | 'splitter'
-  const [budgetTab, setBudgetTab] = useState<'itemized' | 'calculator' | 'optimizer' | 'splitter'>('itemized');
+  const [budgetTab, setBudgetTab] = useState<'itemized' | 'calculator' | 'optimizer' | 'splitter'>(initialSubTab || 'itemized');
+
+  // Synchronize when initialSubTab changes from parent
+  useEffect(() => {
+    if (initialSubTab) {
+      setBudgetTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  const handleTabChange = (tab: 'itemized' | 'calculator' | 'optimizer' | 'splitter') => {
+    setBudgetTab(tab);
+    if (onSelectSubTab) {
+      onSelectSubTab(tab);
+    }
+  };
+
+  // Destination Country & Currency for dual-currency support (synced with App & Dashboard)
+  const initialCountry = useMemo(() => {
+    return selectedCountryProp || detectCountryFromDestination(trip.destination, trip.country);
+  }, [selectedCountryProp, trip.destination, trip.country]);
+
+  const [selectedCountryLocal, setSelectedCountryLocal] = useState<CountryCurrencyInfo>(initialCountry);
+  const selectedCountry = selectedCountryProp || selectedCountryLocal;
+
+  // Destination Flight Package & Airfare Calculation
+  const flightData = useMemo(() => {
+    return getFlightDataForDestination(trip.destination);
+  }, [trip.destination]);
+
+  const baseRoundtripFlightPrice = useMemo(() => {
+    const outbound = flightData.outboundFlight?.pricePerPerson || 3850;
+    const ret = flightData.returnFlight?.pricePerPerson || 4120;
+    return outbound + ret;
+  }, [flightData]);
 
   // Interactive Calculator State
   const [travelers, setTravelers] = useState(trip.travelers || 2);
@@ -55,13 +118,24 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   const [transportTier, setTransportTier] = useState<'public' | 'cab' | 'rental' | 'private'>(trip.transportType || 'cab');
   const [activityTier, setActivityTier] = useState<'relaxed' | 'moderate' | 'packed'>(trip.activityLevel || 'moderate');
 
+  // Flight Options in Budget View (Synced with parent & EstimatedBudgetSection)
+  const [includeFlightsLocal, setIncludeFlightsLocal] = useState<boolean>(true);
+  const includeFlights = includeFlightsProp !== undefined ? includeFlightsProp : includeFlightsLocal;
+
+  const [flightCabinClassLocal, setFlightCabinClassLocal] = useState<'economy' | 'premium' | 'business'>('economy');
+  const flightCabinClass = flightCabinClassProp || flightCabinClassLocal;
+
+  const flightMultiplier = flightCabinClass === 'business' ? 2.3 : flightCabinClass === 'premium' ? 1.45 : 1.0;
+  const flightPerPerson = Math.round(baseRoundtripFlightPrice * flightMultiplier);
+  const totalFlightsCost = includeFlights ? flightPerPerson * travelers : 0;
+
   // Custom User Expenses list
   const [customItems, setCustomItems] = useState<CustomBudgetItem[]>([
     {
       id: 'cust-1',
-      title: 'Roundtrip Flights / Train Tickets',
-      category: 'flight',
-      amount: 6500,
+      title: 'Local High-Speed SIM & Pocket WiFi',
+      category: 'miscellaneous',
+      amount: 1400,
       perPerson: true,
       enabled: true
     },
@@ -75,7 +149,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     },
     {
       id: 'cust-3',
-      title: 'Local Souvenirs & Market Shopping',
+      title: 'Local Souvenirs & Market Shopping Fund',
       category: 'miscellaneous',
       amount: 3000,
       perPerson: false,
@@ -137,31 +211,34 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   // Savings deductions
   const totalSavingsDeduction = appliedSavings.length * 1500;
 
-  // FINAL DYNAMIC BUDGET BREAKDOWN
+  // FINAL DYNAMIC BUDGET BREAKDOWN WITH FLIGHTS
   const currentBudgetBreakdown: BudgetBreakdown = useMemo(() => {
     const finalHotel = Math.max(0, hotelBaseCost - (appliedSavings.includes('hotel_deal') ? 2000 : 0));
+    const finalFlights = totalFlightsCost;
     const finalFood = Math.max(0, diningCost - (appliedSavings.includes('dining_pass') ? 1200 : 0));
     const finalTransport = Math.max(0, transportCost - (appliedSavings.includes('transit_pass') ? 800 : 0));
     const finalActivities = Math.max(0, (placesCost + activitiesCost) - (appliedSavings.includes('combo_ticket') ? 1000 : 0));
     const finalMisc = baseMiscBuffer + customItemsCost;
-    const finalTotal = finalHotel + finalFood + finalTransport + finalActivities + finalMisc;
+    const finalTotal = finalHotel + finalFlights + finalFood + finalTransport + finalActivities + finalMisc;
 
     return {
       hotel: finalHotel,
+      flights: finalFlights,
       food: finalFood,
       transportation: finalTransport,
       activities: finalActivities,
       miscellaneous: finalMisc,
       total: finalTotal
     };
-  }, [hotelBaseCost, diningCost, transportCost, placesCost, activitiesCost, baseMiscBuffer, customItemsCost, appliedSavings]);
+  }, [hotelBaseCost, totalFlightsCost, diningCost, transportCost, placesCost, activitiesCost, baseMiscBuffer, customItemsCost, appliedSavings]);
 
   // Percentages for visual chart
   const hotelPct = Math.round((currentBudgetBreakdown.hotel / currentBudgetBreakdown.total) * 100) || 0;
+  const flightsPct = Math.round(((currentBudgetBreakdown.flights || 0) / currentBudgetBreakdown.total) * 100) || 0;
   const foodPct = Math.round((currentBudgetBreakdown.food / currentBudgetBreakdown.total) * 100) || 0;
   const transportPct = Math.round((currentBudgetBreakdown.transportation / currentBudgetBreakdown.total) * 100) || 0;
   const actPct = Math.round((currentBudgetBreakdown.activities / currentBudgetBreakdown.total) * 100) || 0;
-  const miscPct = Math.max(1, 100 - hotelPct - foodPct - transportPct - actPct);
+  const miscPct = Math.max(1, 100 - hotelPct - flightsPct - foodPct - transportPct - actPct);
 
   // Toggle Custom Item
   const handleToggleCustomItem = (id: string) => {
@@ -197,23 +274,38 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
 
   // Presets
   const handleApplyPreset = (preset: 'backpacker' | 'balanced' | 'luxury') => {
+    const setCabin = (cls: 'economy' | 'premium' | 'business') => {
+      if (onSelectFlightCabinClassProp) onSelectFlightCabinClassProp(cls);
+      else setFlightCabinClassLocal(cls);
+    };
+    const setFlights = (inc: boolean) => {
+      if (onToggleIncludeFlightsProp) onToggleIncludeFlightsProp(inc);
+      else setIncludeFlightsLocal(inc);
+    };
+
     if (preset === 'backpacker') {
       setHotelTier('budget');
       setFoodTier('street');
       setTransportTier('public');
       setActivityTier('relaxed');
-      showToast('⚡ Applied Backpacker Saver Preset');
+      setCabin('economy');
+      setFlights(true);
+      showToast('🎒 Applied Backpacker Saver Preset');
     } else if (preset === 'balanced') {
       setHotelTier('mid');
       setFoodTier('casual');
       setTransportTier('cab');
       setActivityTier('moderate');
+      setCabin('economy');
+      setFlights(true);
       showToast('✨ Applied Best Value Balanced Preset');
     } else {
       setHotelTier('luxury');
       setFoodTier('finedining');
       setTransportTier('private');
       setActivityTier('packed');
+      setCabin('business');
+      setFlights(true);
       showToast('👑 Applied Luxury VIP Getaway Preset');
     }
   };
@@ -225,7 +317,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
       showToast(`Removed: ${savingTitle}`);
     } else {
       setAppliedSavings(prev => [...prev, savingKey]);
-      showToast(`Applied ${savingTitle} (Saved ${formatCurrency(discount, currency)})`);
+      showToast(`Applied ${savingTitle} (Saved ${formatINR(discount)})`);
       try {
         confetti({
           particleCount: 35,
@@ -236,7 +328,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     }
   };
 
-  // Apply to Active Trip
+  // Apply to Trip Plan & Return to Dashboard
   const handleApplyToTrip = () => {
     onUpdateBudget(currentBudgetBreakdown, {
       travelers,
@@ -247,33 +339,46 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
       transportType: transportTier,
       activityLevel: activityTier
     });
-    showToast('🎉 Budget parameters & total successfully synchronized to active trip!');
+    showToast('🎉 Budget parameters & airfare successfully synchronized to active trip!');
+    try {
+      confetti({
+        particleCount: 40,
+        spread: 60,
+        origin: { y: 0.7 }
+      });
+    } catch (e) {}
+    if (onBackToDashboard) {
+      setTimeout(() => {
+        onBackToDashboard();
+      }, 700);
+    }
   };
 
-  // Copy Budget Breakdown to Clipboard
+  // Copy Budget Breakdown to Clipboard in Dual Currency
   const handleCopyBudgetSummary = () => {
     const summaryText = `
-📍 TRAVELIA AI TRIP BUDGET BREAKDOWN
-Destination: ${trip.destination}
+📍 TRAVELIA AI TRIP BUDGET BREAKDOWN: ${trip.destination.toUpperCase()}
+Country: ${selectedCountry.flag} ${selectedCountry.countryName} (${selectedCountry.currencyCode})
 Duration: ${nights} Nights (${nights + 1} Days) | Travelers: ${travelers} Pax
 ---------------------------------------------
-🏨 Accommodations: ${formatCurrency(currentBudgetBreakdown.hotel, currency)}
-🍽️ Food & Dining: ${formatCurrency(currentBudgetBreakdown.food, currency)}
-🚕 Transportation: ${formatCurrency(currentBudgetBreakdown.transportation, currency)}
-🎟️ Activities & Sights: ${formatCurrency(currentBudgetBreakdown.activities, currency)}
-🎒 Flights & Misc Items: ${formatCurrency(currentBudgetBreakdown.miscellaneous, currency)}
+🏨 Accommodations: ${formatINR(currentBudgetBreakdown.hotel)} ≈ ${formatForeign(currentBudgetBreakdown.hotel, selectedCountry)}
+✈️ Flights & Airfare: ${formatINR(currentBudgetBreakdown.flights || 0)} ≈ ${formatForeign(currentBudgetBreakdown.flights || 0, selectedCountry)}
+🍽️ Food & Dining: ${formatINR(currentBudgetBreakdown.food)} ≈ ${formatForeign(currentBudgetBreakdown.food, selectedCountry)}
+🚕 Transportation: ${formatINR(currentBudgetBreakdown.transportation)} ≈ ${formatForeign(currentBudgetBreakdown.transportation, selectedCountry)}
+🎟️ Activities & Sights: ${formatINR(currentBudgetBreakdown.activities)} ≈ ${formatForeign(currentBudgetBreakdown.activities, selectedCountry)}
+🎒 Misc Items & Buffer: ${formatINR(currentBudgetBreakdown.miscellaneous)} ≈ ${formatForeign(currentBudgetBreakdown.miscellaneous, selectedCountry)}
 ---------------------------------------------
-TOTAL ESTIMATE: ${formatCurrency(currentBudgetBreakdown.total, currency)}
-Per Traveler: ~${formatCurrency(Math.round(currentBudgetBreakdown.total / travelers), currency)}
-Generated by Travelia AI
+TOTAL ESTIMATE: ${formatINR(currentBudgetBreakdown.total)} ≈ ${formatForeign(currentBudgetBreakdown.total, selectedCountry)}
+Per Traveler: ~${formatINR(Math.round(currentBudgetBreakdown.total / travelers))} ≈ ${formatForeign(Math.round(currentBudgetBreakdown.total / travelers), selectedCountry)}
+Generated by Travelia AI Dual-Currency Budget Studio
     `.trim();
 
     navigator.clipboard.writeText(summaryText);
-    showToast('📋 Formatted budget summary copied to clipboard!');
+    showToast(`📋 Formatted dual-currency summary (${selectedCountry.currencyCode} + INR) copied!`);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 animate-in fade-in duration-200">
       
       {/* FLOATING TOAST NOTIFICATION */}
       {toastMessage && (
@@ -283,23 +388,65 @@ Generated by Travelia AI
         </div>
       )}
 
+      {/* TOP NAVIGATION & BACK TO DASHBOARD BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {onBackToDashboard && (
+          <button
+            onClick={onBackToDashboard}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white hover:bg-neutral-100 text-neutral-800 text-xs font-bold border border-neutral-200 shadow-2xs transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
+          >
+            <ArrowLeft className="w-4 h-4 text-[#344E27]" />
+            <span>← Back to Trip Dashboard</span>
+          </button>
+        )}
+
+        {/* Currency & Destination Quick Selector */}
+        <div className="flex items-center gap-2 self-start sm:self-auto ml-auto">
+          <span className="text-xs font-bold text-neutral-500 hidden sm:inline">Destination Currency:</span>
+          <div className="relative">
+            <select
+              value={selectedCountry.countryCode}
+              onChange={(e) => {
+                const found = SUPPORTED_DESTINATION_COUNTRIES.find(c => c.countryCode === e.target.value);
+                if (found) {
+                  if (onSelectCountryProp) {
+                    onSelectCountryProp(found);
+                  } else {
+                    setSelectedCountryLocal(found);
+                  }
+                  showToast(`Currency converted to ${found.flag} ${found.countryName} (${found.currencyCode})`);
+                }
+              }}
+              className="px-3.5 py-1.5 rounded-full bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-bold border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-[#344E27] cursor-pointer appearance-none pr-8 shadow-2xs"
+            >
+              {SUPPORTED_DESTINATION_COUNTRIES.map(c => (
+                <option key={c.countryCode} value={c.countryCode}>
+                  {c.flag} {c.countryName} ({c.currencyCode})
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-neutral-400 absolute right-2.5 top-2.5 pointer-events-none" />
+          </div>
+        </div>
+      </div>
+
       {/* HEADER & MAIN TAB SWITCHER */}
       <div className="text-center max-w-3xl mx-auto space-y-4">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E5ECE0] text-[#344E27] text-xs font-bold uppercase tracking-wider">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E5ECE0] text-[#344E27] text-xs font-bold uppercase tracking-wider border border-[#344E27]/20">
           <DollarSign className="w-3.5 h-3.5" />
-          <span>Real-Time Expense Engine</span>
+          <span>Real-Time Expense Engine & Dual Currency</span>
         </div>
         <h1 className="font-display font-black text-3xl sm:text-4xl text-[#191919] uppercase tracking-tight">
           Trip Budget & Cost Intelligence
         </h1>
         <p className="text-neutral-500 text-xs sm:text-sm leading-relaxed">
-          Transparent, live itemized cost tracking for {trip.destination} with dynamic parameter testing, AI savings recommendations, and group expense splitting.
+          Transparent, live cost tracking for {trip.destination} showing values in <strong className="text-neutral-700">₹ INR</strong> & <strong className="text-[#344E27]">{selectedCountry.flag} {selectedCountry.countryName} ({selectedCountry.currencyCode})</strong> with flights, stay tiers, dining, and group expense splitting.
         </p>
 
-        {/* 4 Main Tabs */}
+        {/* 4 Main Tabs (ALL KEPT INTACT & CONNECTED) */}
         <div className="inline-flex items-center p-1.5 rounded-full bg-neutral-200/80 border border-neutral-300 gap-1 mt-3 flex-wrap justify-center shadow-2xs">
           <button
-            onClick={() => setBudgetTab('itemized')}
+            onClick={() => handleTabChange('itemized')}
             className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
               budgetTab === 'itemized'
                 ? 'bg-[#344E27] text-white shadow-xs'
@@ -307,11 +454,11 @@ Generated by Travelia AI
             }`}
           >
             <Receipt className="w-3.5 h-3.5" />
-            <span>Itemized Real Costs</span>
+            <span>Line-By-Line Audit</span>
           </button>
 
           <button
-            onClick={() => setBudgetTab('calculator')}
+            onClick={() => handleTabChange('calculator')}
             className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
               budgetTab === 'calculator'
                 ? 'bg-[#344E27] text-white shadow-xs'
@@ -323,7 +470,7 @@ Generated by Travelia AI
           </button>
 
           <button
-            onClick={() => setBudgetTab('optimizer')}
+            onClick={() => handleTabChange('optimizer')}
             className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
               budgetTab === 'optimizer'
                 ? 'bg-[#344E27] text-white shadow-xs'
@@ -340,7 +487,7 @@ Generated by Travelia AI
           </button>
 
           <button
-            onClick={() => setBudgetTab('splitter')}
+            onClick={() => handleTabChange('splitter')}
             className={`px-4 py-2 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
               budgetTab === 'splitter'
                 ? 'bg-[#344E27] text-white shadow-xs'
@@ -365,17 +512,20 @@ Generated by Travelia AI
                   Total Estimated Trip Cost
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
-                  Live Synced
+                  {selectedCountry.flag} {selectedCountry.currencyCode} + INR
                 </span>
               </div>
 
               <div className="font-display font-black text-4xl sm:text-5xl text-[#191919] tracking-tight mt-1">
-                {formatCurrency(currentBudgetBreakdown.total, currency)}
+                {formatINR(currentBudgetBreakdown.total)}
+              </div>
+              <div className="text-sm sm:text-base font-extrabold text-[#344E27] mt-1">
+                ≈ {formatForeign(currentBudgetBreakdown.total, selectedCountry)}
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500 mt-2 font-medium">
                 <span className="font-bold text-[#344E27]">
-                  ~ {formatCurrency(Math.round(currentBudgetBreakdown.total / travelers), currency)} / person
+                  ~ {formatINR(Math.round(currentBudgetBreakdown.total / travelers))} ({formatForeign(Math.round(currentBudgetBreakdown.total / travelers), selectedCountry)}) / person
                 </span>
                 <span>•</span>
                 <span>{travelers} Travelers</span>
@@ -391,7 +541,7 @@ Generated by Travelia AI
                   className="px-5 py-2.5 rounded-full bg-[#344E27] hover:bg-[#273D1C] text-white font-extrabold text-xs shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Apply to Trip Plan</span>
+                  <span>Apply to Trip Plan & Return</span>
                 </button>
 
                 <button
@@ -431,67 +581,85 @@ Generated by Travelia AI
                 {/* Multi-color segment bar */}
                 <div className="h-3.5 w-full rounded-full overflow-hidden flex bg-neutral-100 shadow-inner">
                   <div style={{ width: `${hotelPct}%` }} className="bg-[#344E27] transition-all duration-300" title={`Stay: ${hotelPct}%`} />
+                  <div style={{ width: `${flightsPct}%` }} className="bg-[#0284C7] transition-all duration-300" title={`Flights: ${flightsPct}%`} />
                   <div style={{ width: `${foodPct}%` }} className="bg-[#F59E0B] transition-all duration-300" title={`Dining: ${foodPct}%`} />
                   <div style={{ width: `${transportPct}%` }} className="bg-[#3B82F6] transition-all duration-300" title={`Transit: ${transportPct}%`} />
                   <div style={{ width: `${actPct}%` }} className="bg-[#8B5CF6] transition-all duration-300" title={`Activities: ${actPct}%`} />
-                  <div style={{ width: `${miscPct}%` }} className="bg-neutral-400 transition-all duration-300" title={`Flights/Misc: ${miscPct}%`} />
+                  <div style={{ width: `${miscPct}%` }} className="bg-neutral-400 transition-all duration-300" title={`Misc/Buffer: ${miscPct}%`} />
                 </div>
               </div>
 
-              {/* 5 Quick Category Stat Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+              {/* 6 Quick Category Stat Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 
-                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200/80">
-                  <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 font-bold">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#344E27]" />
+                {/* Stay */}
+                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-100">
+                  <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-bold">
+                    <Building2 className="w-3.5 h-3.5 text-[#344E27]" />
                     <span>Stay</span>
                   </div>
                   <span className="font-extrabold text-xs text-[#191919] block mt-1">
-                    {formatCurrency(currentBudgetBreakdown.hotel, currency)}
+                    {formatINR(currentBudgetBreakdown.hotel)}
                   </span>
                   <span className="text-[10px] text-neutral-400 font-medium">{hotelPct}%</span>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200/80">
-                  <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 font-bold">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
+                {/* Flights */}
+                <div className="p-3 rounded-2xl bg-sky-50/60 border border-sky-100">
+                  <div className="flex items-center gap-1.5 text-xs text-sky-800 font-bold">
+                    <Plane className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Flights</span>
+                  </div>
+                  <span className="font-extrabold text-xs text-[#191919] block mt-1">
+                    {formatINR(currentBudgetBreakdown.flights || 0)}
+                  </span>
+                  <span className="text-[10px] text-sky-700 font-medium">{flightsPct}%</span>
+                </div>
+
+                {/* Dining */}
+                <div className="p-3 rounded-2xl bg-amber-50/50 border border-amber-100">
+                  <div className="flex items-center gap-1.5 text-xs text-amber-800 font-bold">
+                    <UtensilsCrossed className="w-3.5 h-3.5 text-amber-600" />
                     <span>Dining</span>
                   </div>
                   <span className="font-extrabold text-xs text-[#191919] block mt-1">
-                    {formatCurrency(currentBudgetBreakdown.food, currency)}
+                    {formatINR(currentBudgetBreakdown.food)}
                   </span>
-                  <span className="text-[10px] text-neutral-400 font-medium">{foodPct}%</span>
+                  <span className="text-[10px] text-amber-700 font-medium">{foodPct}%</span>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200/80">
-                  <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 font-bold">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]" />
+                {/* Transit */}
+                <div className="p-3 rounded-2xl bg-blue-50/50 border border-blue-100">
+                  <div className="flex items-center gap-1.5 text-xs text-blue-800 font-bold">
+                    <Car className="w-3.5 h-3.5 text-blue-600" />
                     <span>Transit</span>
                   </div>
                   <span className="font-extrabold text-xs text-[#191919] block mt-1">
-                    {formatCurrency(currentBudgetBreakdown.transportation, currency)}
+                    {formatINR(currentBudgetBreakdown.transportation)}
                   </span>
-                  <span className="text-[10px] text-neutral-400 font-medium">{transportPct}%</span>
+                  <span className="text-[10px] text-blue-700 font-medium">{transportPct}%</span>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200/80">
-                  <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 font-bold">
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]" />
+                {/* Activities */}
+                <div className="p-3 rounded-2xl bg-purple-50/50 border border-purple-100">
+                  <div className="flex items-center gap-1.5 text-xs text-purple-800 font-bold">
+                    <Ticket className="w-3.5 h-3.5 text-purple-600" />
                     <span>Sights</span>
                   </div>
                   <span className="font-extrabold text-xs text-[#191919] block mt-1">
-                    {formatCurrency(currentBudgetBreakdown.activities, currency)}
+                    {formatINR(currentBudgetBreakdown.activities)}
                   </span>
-                  <span className="text-[10px] text-neutral-400 font-medium">{actPct}%</span>
+                  <span className="text-[10px] text-purple-700 font-medium">{actPct}%</span>
                 </div>
 
-                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-200/80 col-span-2 sm:col-span-1">
-                  <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 font-bold">
-                    <div className="w-2.5 h-2.5 rounded-full bg-neutral-400" />
-                    <span>Flights & Misc</span>
+                {/* Misc */}
+                <div className="p-3 rounded-2xl bg-neutral-50 border border-neutral-100">
+                  <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-bold">
+                    <ShoppingBag className="w-3.5 h-3.5 text-neutral-600" />
+                    <span>Misc Buffer</span>
                   </div>
                   <span className="font-extrabold text-xs text-[#191919] block mt-1">
-                    {formatCurrency(currentBudgetBreakdown.miscellaneous, currency)}
+                    {formatINR(currentBudgetBreakdown.miscellaneous)}
                   </span>
                   <span className="text-[10px] text-neutral-400 font-medium">{miscPct}%</span>
                 </div>
@@ -524,13 +692,88 @@ Generated by Travelia AI
               className="px-4 py-2 rounded-full bg-[#344E27] hover:bg-[#273D1C] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer self-start sm:self-auto"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Custom Expense (Flight, Visa, etc.)</span>
+              <span>Add Custom Expense (Visa, Scuba, etc.)</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
-            {/* 1. Hotel & Stays */}
+            {/* 1. Roundtrip Flights & Airfare */}
+            <div className="bg-white rounded-[28px] p-6 border border-neutral-200 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center">
+                    <Plane className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-sm text-[#191919]">Roundtrip Flights</h4>
+                    <span className="text-[11px] text-neutral-400">
+                      {flightData.outboundFlight.originCode} ⇄ {flightData.outboundFlight.destinationCode} • {travelers} Pax
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-extrabold text-sm text-[#191919] block">
+                    {formatINR(totalFlightsCost)}
+                  </span>
+                  <span className="text-[10px] font-bold text-sky-700 block">
+                    ≈ {formatForeign(totalFlightsCost, selectedCountry)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-sky-50/50 border border-sky-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-[#191919] block">
+                      {flightData.outboundFlight.airline} ({flightCabinClass.toUpperCase()})
+                    </span>
+                    <span className="text-[11px] text-neutral-500">
+                      ~{formatINR(flightPerPerson)} ({formatForeign(flightPerPerson, selectedCountry)}) / traveler
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-neutral-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeFlights}
+                      onChange={(e) => {
+                        if (onToggleIncludeFlightsProp) {
+                          onToggleIncludeFlightsProp(e.target.checked);
+                        } else {
+                          setIncludeFlightsLocal(e.target.checked);
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-[#344E27] accent-[#344E27]"
+                    />
+                    <span>Include</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-1">
+                  {(['economy', 'premium', 'business'] as const).map(cls => (
+                    <button
+                      key={cls}
+                      onClick={() => {
+                        if (onSelectFlightCabinClassProp) {
+                          onSelectFlightCabinClassProp(cls);
+                        } else {
+                          setFlightCabinClassLocal(cls);
+                        }
+                      }}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
+                        flightCabinClass === cls
+                          ? 'bg-sky-600 text-white shadow-2xs'
+                          : 'bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {cls === 'premium' ? 'Premium Economy' : cls}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Hotel & Stays */}
             <div className="bg-white rounded-[28px] p-6 border border-neutral-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
                 <div className="flex items-center gap-2.5">
@@ -542,9 +785,14 @@ Generated by Travelia AI
                     <span className="text-[11px] text-neutral-400">{nights} Nights ({hotelTier} tier)</span>
                   </div>
                 </div>
-                <span className="font-extrabold text-sm text-[#191919]">
-                  {formatCurrency(currentBudgetBreakdown.hotel, currency)}
-                </span>
+                <div className="text-right">
+                  <span className="font-extrabold text-sm text-[#191919] block">
+                    {formatINR(currentBudgetBreakdown.hotel)}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#344E27] block">
+                    ≈ {formatForeign(currentBudgetBreakdown.hotel, selectedCountry)}
+                  </span>
+                </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200/80 flex items-center justify-between">
@@ -553,16 +801,16 @@ Generated by Travelia AI
                     {selectedHotel ? selectedHotel.name : 'Ocean Pearl Boutique Resort'}
                   </span>
                   <span className="text-[11px] text-neutral-500">
-                    {formatCurrency(selectedHotel?.pricePerNight || 4500, currency)} / night × {nights} nights
+                    {formatINR(selectedHotel?.pricePerNight || 4500)} / night × {nights} nights
                   </span>
                 </div>
                 <span className="text-xs font-extrabold text-[#344E27]">
-                  {formatCurrency(hotelBaseCost, currency)}
+                  {formatINR(hotelBaseCost)}
                 </span>
               </div>
             </div>
 
-            {/* 2. Dining & Meals */}
+            {/* 3. Dining & Meals */}
             <div className="bg-white rounded-[28px] p-6 border border-neutral-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
                 <div className="flex items-center gap-2.5">
@@ -571,12 +819,17 @@ Generated by Travelia AI
                   </div>
                   <div>
                     <h4 className="font-display font-bold text-sm text-[#191919]">Food & Dining</h4>
-                    <span className="text-[11px] text-neutral-400">{addedRestaurants.length} saved restaurant(s) + daily meals</span>
+                    <span className="text-[11px] text-neutral-400">{addedRestaurants.length} saved spot(s) + daily meals</span>
                   </div>
                 </div>
-                <span className="font-extrabold text-sm text-[#191919]">
-                  {formatCurrency(currentBudgetBreakdown.food, currency)}
-                </span>
+                <div className="text-right">
+                  <span className="font-extrabold text-sm text-[#191919] block">
+                    {formatINR(currentBudgetBreakdown.food)}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#344E27] block">
+                    ≈ {formatForeign(currentBudgetBreakdown.food, selectedCountry)}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -584,19 +837,19 @@ Generated by Travelia AI
                   addedRestaurants.map(r => (
                     <div key={r.id} className="p-3 rounded-xl bg-neutral-50 border border-neutral-200/80 flex items-center justify-between text-xs">
                       <span className="font-bold text-[#191919]">{r.name} ({r.cuisine})</span>
-                      <span className="font-extrabold text-neutral-700">{formatCurrency(r.averagePrice, currency)}</span>
+                      <span className="font-extrabold text-neutral-700">{formatINR(r.averagePrice)}</span>
                     </div>
                   ))
                 ) : (
                   <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200/80 flex items-center justify-between text-xs">
                     <span className="font-medium text-neutral-600">Daily Breakfast, Lunch & Dinners ({foodTier} style)</span>
-                    <span className="font-extrabold text-neutral-700">{formatCurrency(diningCost, currency)}</span>
+                    <span className="font-extrabold text-neutral-700">{formatINR(diningCost)}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* 3. Sights & Activities */}
+            {/* 4. Sights & Activities */}
             <div className="bg-white rounded-[28px] p-6 border border-neutral-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
                 <div className="flex items-center gap-2.5">
@@ -608,9 +861,14 @@ Generated by Travelia AI
                     <span className="text-[11px] text-neutral-400">Entry fees & experience passes</span>
                   </div>
                 </div>
-                <span className="font-extrabold text-sm text-[#191919]">
-                  {formatCurrency(currentBudgetBreakdown.activities, currency)}
-                </span>
+                <div className="text-right">
+                  <span className="font-extrabold text-sm text-[#191919] block">
+                    {formatINR(currentBudgetBreakdown.activities)}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#344E27] block">
+                    ≈ {formatForeign(currentBudgetBreakdown.activities, selectedCountry)}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -618,20 +876,20 @@ Generated by Travelia AI
                   <div key={p.id} className="p-3 rounded-xl bg-neutral-50 border border-neutral-200/80 flex items-center justify-between text-xs">
                     <span className="font-bold text-[#191919]">{p.name}</span>
                     <span className="font-extrabold text-neutral-700">
-                      {p.entryCost === 0 ? 'Free' : formatCurrency(p.entryCost * travelers, currency)}
+                      {p.entryCost === 0 ? 'Free' : formatINR(p.entryCost * travelers)}
                     </span>
                   </div>
                 ))}
                 {addedPlaces.length === 0 && (
                   <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200/80 flex items-center justify-between text-xs">
                     <span className="font-medium text-neutral-600">Scheduled itinerary experiences & passes</span>
-                    <span className="font-extrabold text-neutral-700">{formatCurrency(activitiesCost, currency)}</span>
+                    <span className="font-extrabold text-neutral-700">{formatINR(activitiesCost)}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* 4. Transportation */}
+            {/* 5. Transportation */}
             <div className="bg-white rounded-[28px] p-6 border border-neutral-200 shadow-2xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
                 <div className="flex items-center gap-2.5">
@@ -643,9 +901,14 @@ Generated by Travelia AI
                     <span className="text-[11px] text-neutral-400">{transportTier} mode • {nights + 1} Days</span>
                   </div>
                 </div>
-                <span className="font-extrabold text-sm text-[#191919]">
-                  {formatCurrency(currentBudgetBreakdown.transportation, currency)}
-                </span>
+                <div className="text-right">
+                  <span className="font-extrabold text-sm text-[#191919] block">
+                    {formatINR(currentBudgetBreakdown.transportation)}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#344E27] block">
+                    ≈ {formatForeign(currentBudgetBreakdown.transportation, selectedCountry)}
+                  </span>
+                </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-neutral-50 border border-neutral-200/80 flex items-center justify-between text-xs">
@@ -654,10 +917,10 @@ Generated by Travelia AI
                     {transportTier === 'public' ? 'Public Buses & Ferries' : transportTier === 'rental' ? 'Scooter / Self-Drive Car' : transportTier === 'cab' ? 'App Cabs & Taxis' : 'Private Chauffeur'}
                   </span>
                   <span className="text-[11px] text-neutral-500">
-                    {formatCurrency(transportDailyRate, currency)} / day × {nights + 1} days
+                    {formatINR(transportDailyRate)} / day × {nights + 1} days
                   </span>
                 </div>
-                <span className="font-extrabold text-neutral-700">{formatCurrency(transportCost, currency)}</span>
+                <span className="font-extrabold text-neutral-700">{formatINR(transportCost)}</span>
               </div>
             </div>
 
@@ -672,7 +935,7 @@ Generated by Travelia AI
                 </div>
                 <div>
                   <h4 className="font-display font-bold text-base text-[#191919]">Custom & Additional Expenses</h4>
-                  <span className="text-xs text-neutral-400">Flight tickets, visa fees, shopping budget, or optional buffers</span>
+                  <span className="text-xs text-neutral-400">Visa fees, souvenirs fund, or optional buffers</span>
                 </div>
               </div>
 
@@ -702,15 +965,20 @@ Generated by Travelia AI
                           {item.title}
                         </span>
                         <span className="text-[10px] text-neutral-400 capitalize">
-                          {item.category} {item.perPerson && `• (${formatCurrency(item.amount, currency)} × ${travelers} pax)`}
+                          {item.category} {item.perPerson && `• (${formatINR(item.amount)} × ${travelers} pax)`}
                         </span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span className={`text-xs font-extrabold ${item.enabled ? 'text-[#191919]' : 'text-neutral-400'}`}>
-                        {formatCurrency(totalItemCost, currency)}
-                      </span>
+                      <div className="text-right">
+                        <span className={`text-xs font-extrabold ${item.enabled ? 'text-[#191919]' : 'text-neutral-400'}`}>
+                          {formatINR(totalItemCost)}
+                        </span>
+                        <span className="text-[10px] font-bold text-[#344E27] block">
+                          ≈ {formatForeign(totalItemCost, selectedCountry)}
+                        </span>
+                      </div>
                       <button
                         onClick={() => handleDeleteCustomItem(item.id)}
                         className="text-neutral-300 hover:text-red-500 transition-colors p-1"
@@ -754,7 +1022,7 @@ Generated by Travelia AI
                   🎒 Backpacker Saver
                 </span>
                 <span className="text-[11px] text-neutral-500 block mt-1">
-                  Budget stays, street food shacks & public buses. Maximum value.
+                  Budget stays, economy flights, street food & public buses.
                 </span>
               </button>
 
@@ -766,7 +1034,7 @@ Generated by Travelia AI
                   ✨ Smart Explorer (Best Value)
                 </span>
                 <span className="text-[11px] text-neutral-600 block mt-1">
-                  Boutique 3-4★ stays, casual bistros, scooters & private app cabs.
+                  Boutique 3-4★ stays, standard flights, casual bistros & cabs.
                 </span>
               </button>
 
@@ -778,7 +1046,7 @@ Generated by Travelia AI
                   👑 Luxury VIP Getaway
                 </span>
                 <span className="text-[11px] text-neutral-500 block mt-1">
-                  5★ oceanfront suites, fine seafood dining & dedicated private driver.
+                  5★ suites, business class flights, fine dining & private chauffeur.
                 </span>
               </button>
             </div>
@@ -792,7 +1060,7 @@ Generated by Travelia AI
                   Fine-Tune Parameter Sliders
                 </h3>
                 <p className="text-xs text-neutral-500 mt-0.5">
-                  Adjust guest counts, nights, and comfort tiers to see live recalculation.
+                  Adjust guest counts, nights, flights, and comfort tiers to see live recalculation.
                 </p>
               </div>
 
@@ -846,6 +1114,56 @@ Generated by Travelia AI
                   <span>Standard (4n)</span>
                   <span>Long Stay (14n)</span>
                 </div>
+              </div>
+
+              {/* Roundtrip Flights Tier */}
+              <div className="p-4 rounded-2xl bg-sky-50/50 border border-sky-100 space-y-2">
+                <div className="flex justify-between text-xs font-bold text-[#191919]">
+                  <span className="flex items-center gap-1">
+                    <Plane className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Flight Airfare</span>
+                  </span>
+                  <span className="text-sky-800 font-extrabold">{includeFlights ? flightCabinClass.toUpperCase() : 'EXCLUDED'}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['economy', 'premium', 'business'] as const).map((cls) => (
+                    <button
+                      key={cls}
+                      onClick={() => {
+                        if (onSelectFlightCabinClassProp) {
+                          onSelectFlightCabinClassProp(cls);
+                        } else {
+                          setFlightCabinClassLocal(cls);
+                        }
+                        if (onToggleIncludeFlightsProp) {
+                          onToggleIncludeFlightsProp(true);
+                        } else {
+                          setIncludeFlightsLocal(true);
+                        }
+                      }}
+                      className={`py-1.5 text-[11px] font-bold rounded-xl capitalize transition-all cursor-pointer ${
+                        flightCabinClass === cls && includeFlights
+                          ? 'bg-sky-600 text-white shadow-2xs'
+                          : 'bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {cls === 'premium' ? 'Premium' : cls}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    const nextVal = !includeFlights;
+                    if (onToggleIncludeFlightsProp) {
+                      onToggleIncludeFlightsProp(nextVal);
+                    } else {
+                      setIncludeFlightsLocal(nextVal);
+                    }
+                  }}
+                  className="text-[10px] text-sky-700 font-bold hover:underline block pt-0.5 cursor-pointer"
+                >
+                  {includeFlights ? 'Exclude flight from total' : '+ Include flight tickets'}
+                </button>
               </div>
 
               {/* Hotel Category */}
@@ -917,26 +1235,6 @@ Generated by Travelia AI
                 </div>
               </div>
 
-              {/* Activity Pace */}
-              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 space-y-2">
-                <span className="text-xs font-bold text-[#191919] block">Sightseeing Pace</span>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(['relaxed', 'moderate', 'packed'] as const).map((tier) => (
-                    <button
-                      key={tier}
-                      onClick={() => setActivityTier(tier)}
-                      className={`py-2 text-xs font-bold rounded-xl capitalize transition-all cursor-pointer ${
-                        activityTier === tier
-                          ? 'bg-[#344E27] text-white shadow-2xs'
-                          : 'bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-100'
-                      }`}
-                    >
-                      {tier}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
             </div>
 
           </div>
@@ -968,31 +1266,31 @@ Generated by Travelia AI
             {[
               {
                 id: 'hotel_deal',
-                title: 'Ocean-View Early Booking Deal',
+                title: 'Early Booking Accommodation Deal',
                 category: 'Accommodation',
                 discount: 2000,
                 desc: 'Reserve boutique eco-resort 3 weeks early to unlock complimentary breakfast & airport shuttle.'
               },
               {
                 id: 'dining_pass',
-                title: 'Coastal Seafood Shack Dining Pass',
+                title: 'Local Coastal Dining Smart Pass',
                 category: 'Dining',
                 discount: 1200,
-                desc: 'Opt for authentic family-run beach shacks for lunches instead of high-markup hotel restaurants.'
+                desc: 'Opt for authentic family-run beach shacks for lunches instead of high-markup hotel dining.'
               },
               {
                 id: 'transit_pass',
-                title: 'Shared Coastal Ferry & Scooter Pass',
+                title: 'Shared Transit & Cab Smart Pass',
                 category: 'Transit',
                 discount: 800,
-                desc: 'Combine North-South river ferries with 2-day scooter rental to eliminate peak-hour cab surges.'
+                desc: 'Combine city rapid rail with group app cabs to eliminate peak-hour deadheading.'
               },
               {
                 id: 'combo_ticket',
-                title: 'Heritage Forts & Spice Plantation Pass',
+                title: 'Heritage Sights & Attractions Combo Pass',
                 category: 'Activities',
                 discount: 1000,
-                desc: 'Pre-purchase multi-attraction combo ticket for Aguada Fort, Chapora & Sahakari Spice Farm.'
+                desc: 'Pre-purchase multi-attraction combo ticket for top heritage and monument entries.'
               }
             ].map(opt => {
               const isApplied = appliedSavings.includes(opt.id);
@@ -1011,7 +1309,7 @@ Generated by Travelia AI
                         {opt.category}
                       </span>
                       <span className="text-xs font-black text-emerald-700">
-                        Save {formatCurrency(opt.discount, currency)}
+                        Save {formatINR(opt.discount)} (≈ {formatForeign(opt.discount, selectedCountry)})
                       </span>
                     </div>
 
@@ -1039,7 +1337,7 @@ Generated by Travelia AI
                     ) : (
                       <>
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Apply {formatCurrency(opt.discount, currency)} Saving</span>
+                        <span>Apply {formatINR(opt.discount)} Saving</span>
                       </>
                     )}
                   </button>
@@ -1068,7 +1366,7 @@ Generated by Travelia AI
               </h3>
               <button
                 onClick={() => setShowAddCustomModal(false)}
-                className="text-neutral-400 hover:text-neutral-600 p-1"
+                className="text-neutral-400 hover:text-neutral-600 p-1 cursor-pointer"
               >
                 ✕
               </button>
@@ -1083,7 +1381,7 @@ Generated by Travelia AI
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Scuba Diving Pass, Visa Fee, Train Tickets"
+                  placeholder="e.g. Scuba Diving Pass, Visa Fee, Souvenirs"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-[#344E27]"
                   required
                 />
@@ -1092,7 +1390,7 @@ Generated by Travelia AI
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-neutral-700 block mb-1">
-                    Amount (in INR)
+                    Amount (in INR ₹)
                   </label>
                   <input
                     type="number"
@@ -1103,6 +1401,11 @@ Generated by Travelia AI
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-[#344E27]"
                     required
                   />
+                  {newAmount && Number(newAmount) > 0 && (
+                    <span className="text-[10px] font-extrabold text-[#344E27] block mt-0.5">
+                      ≈ {formatForeign(Number(newAmount), selectedCountry)}
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -1114,7 +1417,7 @@ Generated by Travelia AI
                     onChange={(e) => setNewCategory(e.target.value as any)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-[#344E27]"
                   >
-                    <option value="flight">Flights & Transit</option>
+                    <option value="flight">Flights & Upgrades</option>
                     <option value="activities">Activities & Tours</option>
                     <option value="hotel">Stay & Accommodations</option>
                     <option value="food">Dining & Groceries</option>
@@ -1140,7 +1443,7 @@ Generated by Travelia AI
                 <button
                   type="button"
                   onClick={() => setShowAddCustomModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 hover:bg-neutral-100"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 hover:bg-neutral-100 cursor-pointer"
                 >
                   Cancel
                 </button>

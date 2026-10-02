@@ -13,6 +13,7 @@ import {
   SafetyInfo,
   ItineraryDay
 } from '../types';
+import { buildDayWaypoints, buildRouteSegments } from './geoRouting';
 
 export const DISRUPTION_OPTIONS: DisruptionOption[] = [
   {
@@ -179,87 +180,12 @@ export const generateSmartReplan = (
 };
 
 export const generateDayRoute = (trip: TripPlan, dayNumber: number = 1): DayRoute => {
-  const day = trip.itinerary.find(d => d.dayNumber === dayNumber) || trip.itinerary[0];
-  const hotel = trip.hotels.find(h => h.selected) || trip.hotels[0];
-
-  const waypoints = [
-    {
-      id: 'wp-hotel',
-      title: hotel.name,
-      category: 'hotel' as const,
-      location: hotel.location,
-      coords: [15.518, 73.763] as [number, number],
-      time: '08:30 AM',
-      stopNumber: 1,
-      cost: 0
-    },
-    ...day.activities.map((act, i) => ({
-      id: act.id,
-      title: act.activity,
-      category: (act.category === 'food' ? 'restaurant' : act.category === 'hotel' ? 'hotel' : 'activity') as any,
-      location: act.location,
-      coords: [15.520 + (i * 0.022), 73.760 + ((i % 2 === 0 ? 1 : -1) * 0.018)] as [number, number],
-      time: act.time,
-      stopNumber: i + 2,
-      cost: act.estimatedCost
-    })),
-    {
-      id: 'wp-hotel-return',
-      title: `Return to ${hotel.name}`,
-      category: 'hotel' as const,
-      location: hotel.location,
-      coords: [15.518, 73.763] as [number, number],
-      time: '09:45 PM',
-      stopNumber: day.activities.length + 2,
-      cost: 0
-    }
-  ];
-
-  const segments = [
-    {
-      fromId: waypoints[0].id,
-      toId: waypoints[1].id,
-      fromName: waypoints[0].title,
-      toName: waypoints[1].title,
-      distanceKm: 4.2,
-      durationMinutes: 14,
-      transportMode: 'cab' as const,
-      aiTip: 'Scenic coastal drive along Candolim Main Road.'
-    },
-    {
-      fromId: waypoints[1].id,
-      toId: waypoints[2].id,
-      fromName: waypoints[1].title,
-      toName: waypoints[2].title,
-      distanceKm: 2.8,
-      durationMinutes: 9,
-      transportMode: 'cab' as const,
-      aiTip: 'Quick hop; minimal traffic before 1:00 PM.'
-    },
-    {
-      fromId: waypoints[2].id,
-      toId: waypoints[3].id,
-      fromName: waypoints[2].title,
-      toName: waypoints[3].title,
-      distanceKm: 6.5,
-      durationMinutes: 18,
-      transportMode: 'cab' as const,
-      aiTip: 'Direct highway lane bypasses market choke points.'
-    },
-    {
-      fromId: waypoints[3].id,
-      toId: waypoints[waypoints.length - 1].id,
-      fromName: waypoints[3].title,
-      toName: waypoints[waypoints.length - 1].title,
-      distanceKm: 7.1,
-      durationMinutes: 20,
-      transportMode: 'cab' as const,
-      aiTip: 'Night drive back to hotel along well-lit main avenue.'
-    }
-  ];
+  const waypoints = buildDayWaypoints(trip, dayNumber);
+  const segments = buildRouteSegments(waypoints, trip.destination, 'cab');
 
   const totalDist = segments.reduce((sum, s) => sum + s.distanceKm, 0);
   const totalTime = segments.reduce((sum, s) => sum + s.durationMinutes, 0);
+  const cityName = trip.destination ? trip.destination.split(',')[0] : 'destination';
 
   return {
     dayNumber,
@@ -268,7 +194,7 @@ export const generateDayRoute = (trip: TripPlan, dayNumber: number = 1): DayRout
     waypoints,
     segments,
     optimized: false,
-    transitSavings: 'AI grouped coastal cluster saving 42 mins vs unoptimized routes.'
+    transitSavings: `AI sequenced ${cityName} stops into a streamlined transit corridor.`
   };
 };
 

@@ -35,25 +35,30 @@ const PREFERENCE_OPTIONS: { id: TripPreference; label: string; icon: string }[] 
 ];
 
 const POPULAR_SUGGESTIONS = [
-  'Goa, India',
   'Kyoto, Japan',
+  'Paris, France',
   'Amalfi Coast, Italy',
   'Bali, Indonesia',
   'Swiss Alps, Switzerland',
-  'Paris, France',
-  'Kerala, India',
-  'Rajasthan, India'
+  'Tokyo, Japan',
+  'Rome, Italy',
+  'Goa, India'
 ];
 
 export const PlannerView: React.FC<PlannerViewProps> = ({
   onGenerateTrip,
-  initialDestination = 'Goa, India',
+  initialDestination = '',
   isGenerating = false,
 }) => {
-  const [destination, setDestination] = useState(initialDestination);
+  const [destination, setDestination] = useState(initialDestination || '');
   const [dates, setDates] = useState('Nov 12 - Nov 16, 2026');
   const [days, setDays] = useState(5);
   const [travelers, setTravelers] = useState(2);
+
+  // Sync destination state if initialDestination changes
+  React.useEffect(() => {
+    setDestination(initialDestination || '');
+  }, [initialDestination]);
   const [selectedPreferences, setSelectedPreferences] = useState<TripPreference[]>([
     'Relaxation',
     'Food & Culture',
@@ -79,8 +84,8 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
         setUploadStatus('Analyzing landmark & destination metadata...');
         
         setTimeout(() => {
-          setUploadStatus('✨ AI Recognized: Goa Coastal Shoreline!');
-          setDestination('Goa, India');
+          setUploadStatus('✨ AI Recognized: Coastal Destination');
+          setDestination('Scenic Tropical Coast');
         }, 1000);
       };
       reader.readAsDataURL(file);
@@ -94,8 +99,8 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         setUploadedImage(reader.result as string);
-        setUploadStatus('✨ AI Recognized: Goa Coastal Shoreline!');
-        setDestination('Goa, India');
+        setUploadStatus('✨ AI Recognized: Coastal Destination');
+        setDestination('Scenic Tropical Coast');
       };
       reader.readAsDataURL(file);
     }
@@ -145,10 +150,20 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                   type="text"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
-                  placeholder="e.g. Goa, India or Kyoto, Japan"
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-base font-semibold text-[#191919] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:border-transparent transition-all placeholder:text-neutral-400"
+                  placeholder="Enter any city or landmark (e.g. Kyoto, Paris, Bali, New York...)"
+                  className="w-full pl-12 pr-10 py-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-base font-semibold text-[#191919] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:border-transparent transition-all placeholder:text-neutral-400"
                   required
                 />
+                {destination && (
+                  <button
+                    type="button"
+                    onClick={() => setDestination('')}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-700 cursor-pointer transition-colors"
+                    title="Clear destination"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Quick suggestion pills */}
