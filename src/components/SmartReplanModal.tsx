@@ -21,6 +21,7 @@ import {
 import { TripPlan, DisruptionType, SmartReplanSuggestion, Currency } from '../types';
 import { DISRUPTION_OPTIONS, generateSmartReplan } from '../data/featureData';
 import { formatCurrency } from '../data/mockData';
+import { replanWeather } from '../services/aiClient';
 import confetti from 'canvas-confetti';
 
 interface SmartReplanModalProps {
@@ -50,13 +51,36 @@ export const SmartReplanModal: React.FC<SmartReplanModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setIsProcessing(true);
-    setTimeout(() => {
-      const res = generateSmartReplan(trip, selectedDisruption, selectedDay);
-      setSuggestion(res);
+    try {
+      const res = await replanWeather(trip, selectedDay, selectedDisruption);
+      if (res && res.changes) {
+        setSuggestion({
+          title: `AI Weather & Disruption Replan (${selectedDisruption})`,
+          disruptionReason: res.summary || `Smart replan for Day ${selectedDay}`,
+          estimatedTimeSaved: `${Math.round(res.travelTimeSavedMinutes || 45)} mins`,
+          budgetImpact: res.estimatedSavings ? -res.estimatedSavings : 0,
+          budgetImpactFormatted: res.estimatedSavings > 0 ? `Saved ₹${res.estimatedSavings.toLocaleString('en-IN')}` : 'Budget Neutral',
+          confidenceScore: Math.round((res.confidence || 0.92) * 100),
+          suggestedChanges: res.changes.map((c: any) => ({
+            activityTitle: c.oldActivity || 'Activity',
+            replacementTitle: c.newActivity || c.oldActivity,
+            reason: c.reason || 'Optimized for current weather and schedule balance',
+            actionType: c.action || 'replace'
+          }))
+        });
+      } else {
+        const fallback = generateSmartReplan(trip, selectedDisruption, selectedDay);
+        setSuggestion(fallback);
+      }
+    } catch (err) {
+      console.warn('Replan fallback triggered:', err);
+      const fallback = generateSmartReplan(trip, selectedDisruption, selectedDay);
+      setSuggestion(fallback);
+    } finally {
       setIsProcessing(false);
-    }, 600);
+    }
   };
 
   const handleAccept = () => {

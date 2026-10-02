@@ -146,6 +146,10 @@ export interface ChatMessage {
     type: 'add_beach' | 'discount_hotel' | 'add_restaurant' | 'recalculate' | 'smart_replan' | 'optimize_route' | 'packing_list';
     label: string;
   };
+  optimizationResult?: any;
+  insights?: string[];
+  suggestedFollowUps?: string[];
+  changes?: any[];
 }
 
 // 1. SMART REPLAN
@@ -328,12 +332,18 @@ export interface TripHealthScore {
   ratingLabel: string;
   summary: string;
   metrics: {
-    budgetBalance: HealthMetric;
-    scheduleIntensity: HealthMetric;
-    travelEfficiency: HealthMetric;
-    activityVariety: HealthMetric;
-    hotelConvenience: HealthMetric;
+    budgetEfficiency?: HealthMetric;
+    routeEfficiency?: HealthMetric;
+    scheduleBalance?: HealthMetric;
     restTime: HealthMetric;
+    activityDiversity?: HealthMetric;
+    weatherCompatibility?: HealthMetric;
+    budgetBalance?: HealthMetric;
+    scheduleIntensity?: HealthMetric;
+    travelEfficiency?: HealthMetric;
+    activityVariety?: HealthMetric;
+    hotelConvenience?: HealthMetric;
+    [key: string]: HealthMetric | undefined;
   };
   improvements: HealthScoreImprovement[];
 }

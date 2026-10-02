@@ -19,14 +19,21 @@ import confetti from 'canvas-confetti';
 interface TripHealthScoreCardProps {
   trip: TripPlan;
   onApplyImprovement: (improvement: HealthScoreImprovement) => void;
+  onTriggerOptimization?: () => void;
 }
 
 export const TripHealthScoreCard: React.FC<TripHealthScoreCardProps> = ({
   trip,
   onApplyImprovement,
+  onTriggerOptimization,
 }) => {
   const [healthData, setHealthData] = useState<TripHealthScore>(() => calculateTripHealthScore(trip));
   const [showImproveModal, setShowImproveModal] = useState(false);
+
+  // Dynamically recompute whenever itinerary, budget, or activities change
+  React.useEffect(() => {
+    setHealthData(calculateTripHealthScore(trip));
+  }, [trip]);
 
   const handleApply = (imp: HealthScoreImprovement) => {
     onApplyImprovement(imp);
@@ -74,7 +81,13 @@ export const TripHealthScoreCard: React.FC<TripHealthScoreCardProps> = ({
         </div>
 
         <button
-          onClick={() => setShowImproveModal(true)}
+          onClick={() => {
+            if (onTriggerOptimization) {
+              onTriggerOptimization();
+            } else {
+              setShowImproveModal(true);
+            }
+          }}
           className="px-5 py-2.5 rounded-full bg-[#344E27] hover:bg-[#273D1C] text-white text-xs font-extrabold flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
         >
           <Sparkles className="w-3.5 h-3.5 text-[#E5ECE0]" />

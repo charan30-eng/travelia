@@ -10,32 +10,52 @@ import {
   DollarSign, 
   Compass, 
   Umbrella,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  Activity,
+  RefreshCw,
+  AlertCircle,
+  Eye,
+  TrendingUp,
+  Clock,
+  MapPin
 } from 'lucide-react';
 import { ChatMessage, TripPlan } from '../types';
+import { sendChatMessage, optimizeTrip, OptimizationResult } from '../services/aiClient';
 
 interface AIChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   trip: TripPlan;
   onApplyAction: (actionType: string) => void;
+  onOpenOptimizationModal?: (result?: OptimizationResult) => void;
+  onApplyOptimization?: (result: OptimizationResult) => void;
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'm1',
     sender: 'ai',
-    text: "Hello! I'm Travelia AI, your neural travel copilot. How can I fine-tune your itinerary or budget today?",
+    text: "Hello! I am Travelia AI, your real-time travel optimization copilot powered by Gemini and our multi-variable itinerary engine. Ask me to lower costs, reroute for traffic or rain, balance your schedule, or explain your Trip Health Score.",
     timestamp: 'Just now'
   }
 ];
 
 const SUGGESTED_QUESTIONS = [
-  'What are the must-see attractions?',
-  'Replan Day 2 activities for evening',
-  'Can you recommend authentic local dining?',
-  'Can you reduce the total trip cost?',
-  'What are local customs & emergency numbers?'
+  "Make my trip cheaper and less tiring",
+  "Replan Day 2 because of afternoon rain",
+  "Why is my Trip Health Score low?",
+  "Optimize route to eliminate backtracking",
+  "What if I add one more traveler?",
+  "Recommend authentic local dining"
+];
+
+const LOADING_STATUSES = [
+  "Consulting Gemini neural travel engine...",
+  "Analyzing itinerary timing & geographic clusters...",
+  "Calculating 6-metric Trip Health Score...",
+  "Simulating budget & transit trade-offs...",
+  "Preparing structured recommendations..."
 ];
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
@@ -43,10 +63,13 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   onClose,
   trip,
   onApplyAction,
+  onOpenOptimizationModal,
+  onApplyOptimization,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [loadingStatusIdx, setLoadingStatusIdx] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -59,11 +82,24 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     }
   }, [messages, isOpen]);
 
+  // Rotate loading text while awaiting AI
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isTyping) {
+      interval = setInterval(() => {
+        setLoadingStatusIdx((prev) => (prev + 1) % LOADING_STATUSES.length);
+      }, 1600);
+    } else {
+      setLoadingStatusIdx(0);
+    }
+    return () => clearInterval(interval);
+  }, [isTyping]);
+
   if (!isOpen) return null;
 
-  const handleSend = (textToSend?: string) => {
+  const handleSend = async (textToSend?: string) => {
     const text = textToSend || input;
-    if (!text.trim()) return;
+    if (!text.trim() || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -76,48 +112,71 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     if (!textToSend) setInput('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      let aiReply = "I have analyzed your request against local availability and route models.";
-      let actionPrompt: ChatMessage['actionPrompt'] | undefined;
+    try {
+      // Build conversation history for multi-turn AI context
+      const history = messages.slice(-6).map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text,
+      }));
 
-      const lower = text.toLowerCase();
-      if (lower.includes('health') || lower.includes('score') || lower.includes('diagnostic')) {
-        aiReply = `Your itinerary has an AI Trip Health Score of 92/100 ("Exceptional Balance"). Schedule pace is well-tempered with 2.5h rest buffers and optimal route transit times under 20 mins between stops.`;
-      } else if (lower.includes('replan') || lower.includes('rain') || lower.includes('disrupt') || lower.includes('storm')) {
-        aiReply = `I've prepared a Smart Replan for ${trip.destination}. For rainy afternoon conditions, outdoor beach watersports are swapped with indoor cultural museum visits and coastal spice plantation lunch.`;
-        actionPrompt = { type: 'add_beach', label: 'Review Smart Replan Options' };
-      } else if (lower.includes('emergency') || lower.includes('custom') || lower.includes('safety') || lower.includes('phrase')) {
-        aiReply = `Official tourist helpline is 1363 (National) and Tourist Police is +91-832-2419400. In Goa, remember: "Deu borem korum" means Thank You, and drinking alcohol on public sands is strictly prohibited.`;
-      } else if (lower.includes('cheap') || lower.includes('budget') || lower.includes('save') || lower.includes('reduce')) {
-        aiReply = "Yes! I found several ways to reduce the estimated cost by approximately ₹4,500 while keeping the main experiences. I've optimized nearby attraction passes and balanced transit modes.";
-        actionPrompt = { type: 'discount_hotel', label: 'Apply Budget Optimization' };
-      } else if (lower.includes('beach') || lower.includes('beaches') || lower.includes('coast')) {
-        aiReply = "I've discovered 3 stunning beaches nearby: Morjim (serene & turtle nesting), Ashwem (palm-shaded boho shacks), and Palolem (tranquil crescent bay). Would you like me to insert them into your afternoon schedule?";
-        actionPrompt = { type: 'add_beach', label: 'Insert 3 Beaches to Itinerary' };
-      } else if (lower.includes('food') || lower.includes('seafood') || lower.includes('dish') || lower.includes('restaurant')) {
-        aiReply = `For ${trip.destination}, don't miss authentic Kingfish Rawa Fry, Crab Xec Xec, Goan Prawn Curry, and Bebinca layer cake. I've highlighted verified local eateries in your dining tab.`;
-        actionPrompt = { type: 'add_restaurant', label: 'Pin Recommended Restaurants' };
-      } else if (lower.includes('pack') || lower.includes('luggage') || lower.includes('cloth')) {
-        aiReply = "Packing Checklist for " + trip.destination + ": Light linen shirts, UV sunglasses, reef-safe sunscreen, waterproof phone pouch, comfortable slip-on sneakers for fort treks, and universal power adapter.";
-      } else {
-        aiReply = `Got it! I have updated your trip preferences for ${trip.destination}. Stays, timing slots, and daily travel expenses have been aligned to your preferences.`;
-      }
+      // Call our secure backend Gemini service
+      const aiResponse = await sendChatMessage(trip, text, history);
 
       const aiMsg: ChatMessage = {
         id: `msg-ai-${Date.now()}`,
         sender: 'ai',
-        text: aiReply,
+        text: aiResponse.message,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        actionPrompt
+        actionPrompt: aiResponse.actionPrompt as any,
+        optimizationResult: aiResponse.proposedChanges as OptimizationResult | undefined,
+        insights: aiResponse.insights,
+        suggestedFollowUps: aiResponse.suggestedFollowUps
       };
 
       setMessages((prev) => [...prev, aiMsg]);
+    } catch (err) {
+      console.error('AIChatModal error:', err);
+      // Resilient fallback message
+      const fallbackMsg: ChatMessage = {
+        id: `msg-ai-err-${Date.now()}`,
+        sender: 'ai',
+        text: "I analyzed your request against local availability. For best results, you can review your Trip Health Score or trigger a comprehensive itinerary optimization below.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        actionPrompt: {
+          type: 'recalculate',
+          label: 'Run Deep AI Itinerary Optimization'
+        }
+      };
+      setMessages((prev) => [...prev, fallbackMsg]);
+    } finally {
       setIsTyping(false);
-    }, 900);
+    }
+  };
+
+  const handleRunFullOptimization = async () => {
+    setIsTyping(true);
+    try {
+      const optResult = await optimizeTrip(trip);
+      const optMsg: ChatMessage = {
+        id: `msg-opt-${Date.now()}`,
+        sender: 'ai',
+        text: `I've generated a comprehensive optimization plan for ${trip.destination}: ${optResult.summary}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        optimizationResult: optResult
+      };
+      setMessages((prev) => [...prev, optMsg]);
+      if (onOpenOptimizationModal) {
+        onOpenOptimizationModal(optResult);
+      }
+    } catch (e) {
+      console.error('Optimization error:', e);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[460px] bg-white shadow-2xl border-l border-neutral-200 flex flex-col animate-in slide-in-from-right duration-250">
+    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[490px] bg-white shadow-2xl border-l border-neutral-200 flex flex-col animate-in slide-in-from-right duration-250">
       
       {/* Drawer Header */}
       <div className="p-4 sm:p-5 border-b border-neutral-200 flex items-center justify-between bg-[#FBFBFB]">
@@ -127,18 +186,22 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h3 className="font-display font-extrabold text-base text-[#191919]">Travelia AI</h3>
+              <h3 className="font-display font-extrabold text-base text-[#191919]">Travelia AI Copilot</h3>
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Gemini Active
+              </span>
             </div>
             <p className="text-[11px] text-neutral-500 font-medium">
-              Assistant for {trip.destination}
+              Real-time intelligence for {trip.destination} • {trip.days} Days • ₹{trip.budget.total.toLocaleString('en-IN')}
             </p>
           </div>
         </div>
 
         <button
           onClick={onClose}
-          className="p-2 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+          className="p-2 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
+          title="Close AI Copilot"
         >
           <X className="w-5 h-5" />
         </button>
@@ -151,9 +214,9 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
             key={msg.id}
             className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
           >
-            <div className="flex items-start gap-2.5 max-w-[85%]">
+            <div className="flex items-start gap-2.5 max-w-[92%]">
               {msg.sender === 'ai' && (
-                <div className="w-7 h-7 rounded-full bg-[#344E27] text-white flex items-center justify-center shrink-0 text-xs font-bold mt-1">
+                <div className="w-7 h-7 rounded-full bg-[#344E27] text-white flex items-center justify-center shrink-0 text-xs font-bold mt-1 shadow-xs">
                   AI
                 </div>
               )}
@@ -162,22 +225,126 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                 className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
                   msg.sender === 'user'
                     ? 'bg-[#344E27] text-white rounded-br-xs shadow-2xs font-medium'
-                    : 'bg-white text-[#191919] border border-neutral-200/80 rounded-bl-xs shadow-2xs'
+                    : 'bg-white text-[#191919] border border-neutral-200/80 rounded-bl-xs shadow-2xs space-y-2.5'
                 }`}
               >
-                <p>{msg.text}</p>
+                <p className="whitespace-pre-line">{msg.text}</p>
 
-                {/* Optional Interactive Action Trigger in AI message */}
-                {msg.actionPrompt && (
+                {/* AI Insights List if provided */}
+                {msg.insights && msg.insights.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-neutral-100 space-y-1">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+                      AI Diagnostic Insights
+                    </span>
+                    {msg.insights.map((ins, i) => (
+                      <div key={i} className="text-xs text-neutral-600 flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-[#344E27] shrink-0 mt-0.5" />
+                        <span>{ins}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Optimization Proposal Rich Card */}
+                {msg.optimizationResult && (
+                  <div className="mt-3 p-3.5 rounded-xl bg-[#F4F6F3] border border-[#D5E0D0] text-[#191919] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#344E27]">
+                        <Sparkles className="w-4 h-4 fill-current" />
+                        <span>Proposed AI Optimization</span>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white font-bold text-neutral-600 border border-neutral-200">
+                        {Math.round((msg.optimizationResult.confidence || 0.9) * 100)}% Match
+                      </span>
+                    </div>
+
+                    {/* Metric Badges */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-white p-2 rounded-lg border border-neutral-200">
+                        <span className="text-[9px] text-neutral-400 uppercase block font-bold">Health Score</span>
+                        <div className="flex items-center justify-center gap-1 font-extrabold text-xs text-emerald-700">
+                          <span>{msg.optimizationResult.healthScoreBefore}</span>
+                          <ArrowRight className="w-2.5 h-2.5 text-neutral-400" />
+                          <span className="text-sm font-black text-[#344E27]">{msg.optimizationResult.healthScoreAfter}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-lg border border-neutral-200">
+                        <span className="text-[9px] text-neutral-400 uppercase block font-bold">Est. Savings</span>
+                        <span className="font-extrabold text-xs text-emerald-600 block mt-0.5">
+                          ₹{msg.optimizationResult.estimatedSavings.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-lg border border-neutral-200">
+                        <span className="text-[9px] text-neutral-400 uppercase block font-bold">Time Saved</span>
+                        <span className="font-extrabold text-xs text-blue-600 block mt-0.5">
+                          {Math.round(msg.optimizationResult.travelTimeSavedMinutes / 6) / 10}h
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons: Preview vs Apply */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          if (onOpenOptimizationModal) {
+                            onOpenOptimizationModal(msg.optimizationResult);
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-neutral-100 text-[#344E27] font-bold text-xs border border-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Preview Diff</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (onApplyOptimization) {
+                            onApplyOptimization(msg.optimizationResult);
+                          } else if (onOpenOptimizationModal) {
+                            onOpenOptimizationModal(msg.optimizationResult);
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 rounded-xl bg-[#344E27] hover:bg-[#273D1C] text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Apply Changes</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Legacy action prompt trigger if applicable */}
+                {msg.actionPrompt && !msg.optimizationResult && (
                   <button
                     onClick={() => {
-                      onApplyAction(msg.actionPrompt!.type);
+                      if (msg.actionPrompt?.type === 'recalculate') {
+                        handleRunFullOptimization();
+                      } else {
+                        onApplyAction(msg.actionPrompt!.type);
+                      }
                     }}
-                    className="mt-3 w-full py-2 px-3 rounded-xl bg-[#E5ECE0] hover:bg-[#344E27] text-[#344E27] hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    className="mt-2.5 w-full py-2 px-3 rounded-xl bg-[#E5ECE0] hover:bg-[#344E27] text-[#344E27] hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Check className="w-3.5 h-3.5" />
                     <span>{msg.actionPrompt.label}</span>
                   </button>
+                )}
+
+                {/* Suggested follow-up prompt chips */}
+                {msg.suggestedFollowUps && msg.suggestedFollowUps.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {msg.suggestedFollowUps.map((sug, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSend(sug)}
+                        className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-[#E5ECE0] text-neutral-700 hover:text-[#344E27] text-[11px] font-semibold transition-colors border border-neutral-200/60 text-left"
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -188,11 +355,17 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
           </div>
         ))}
 
+        {/* Loading state indicator */}
         {isTyping && (
-          <div className="flex items-center gap-2 text-xs text-neutral-400 bg-white p-3 rounded-2xl border border-neutral-200/60 max-w-[120px] shadow-2xs">
-            <span className="w-2 h-2 bg-[#344E27] rounded-full animate-bounce" />
-            <span className="w-2 h-2 bg-[#344E27] rounded-full animate-bounce [animation-delay:0.2s]" />
-            <span className="w-2 h-2 bg-[#344E27] rounded-full animate-bounce [animation-delay:0.4s]" />
+          <div className="flex items-center gap-2.5 text-xs text-neutral-500 bg-white p-3.5 rounded-2xl border border-neutral-200/70 max-w-[340px] shadow-2xs animate-pulse">
+            <div className="flex items-center gap-1 text-[#344E27]">
+              <span className="w-2 h-2 bg-[#344E27] rounded-full animate-bounce" />
+              <span className="w-2 h-2 bg-[#344E27] rounded-full animate-bounce [animation-delay:0.2s]" />
+              <span className="w-2 h-2 bg-[#344E27] rounded-full animate-bounce [animation-delay:0.4s]" />
+            </div>
+            <span className="text-[11px] font-medium text-neutral-600 truncate">
+              {LOADING_STATUSES[loadingStatusIdx]}
+            </span>
           </div>
         )}
 
@@ -205,7 +378,8 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
           <button
             key={i}
             onClick={() => handleSend(q)}
-            className="px-3 py-1.5 rounded-full bg-neutral-100 hover:bg-[#E5ECE0] text-neutral-700 hover:text-[#344E27] text-[11px] font-semibold whitespace-nowrap transition-colors border border-neutral-200/60"
+            disabled={isTyping}
+            className="px-3 py-1.5 rounded-full bg-neutral-100 hover:bg-[#E5ECE0] text-neutral-700 hover:text-[#344E27] text-[11px] font-semibold whitespace-nowrap transition-colors border border-neutral-200/60 disabled:opacity-50 cursor-pointer"
           >
             {q}
           </button>
@@ -225,13 +399,14 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            disabled={isTyping}
             placeholder="Ask AI anything about your trip..."
-            className="flex-1 px-4 py-3 rounded-full bg-neutral-100 border border-neutral-200 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:bg-white"
+            className="flex-1 px-4 py-3 rounded-full bg-neutral-100 border border-neutral-200 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:bg-white disabled:opacity-60"
           />
 
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() || isTyping}
             className="w-11 h-11 rounded-full bg-[#344E27] hover:bg-[#273D1C] disabled:bg-neutral-300 text-white flex items-center justify-center shadow-md transition-all shrink-0 cursor-pointer active:scale-95"
           >
             <Send className="w-4 h-4" />

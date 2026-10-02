@@ -9,6 +9,7 @@ import { MyTripsView } from './components/MyTripsView';
 import { AIChatModal } from './components/AIChatModal';
 import { JavaCodeViewer } from './components/JavaCodeViewer';
 import { AddActivityModal } from './components/AddActivityModal';
+import { AIOptimizationModal } from './components/AIOptimizationModal';
 import { 
   TripPlan, 
   Currency, 
@@ -25,6 +26,7 @@ import {
 import { Sparkles, MessageSquare, Bot } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CountryCurrencyInfo, detectCountryFromDestination } from './data/currencyHelper';
+import { optimizeTrip, OptimizationResult } from './services/aiClient';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
@@ -46,6 +48,70 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [isAddActivityOpen, setIsAddActivityOpen] = useState<boolean>(false);
   const [activeActivityDay, setActiveActivityDay] = useState<number>(1);
+  const [isOptimizationModalOpen, setIsOptimizationModalOpen] = useState<boolean>(false);
+  const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
+
+  const handleOpenOptimization = async (customResult?: OptimizationResult) => {
+    if (customResult) {
+      setOptimizationResult(customResult);
+      setIsOptimizationModalOpen(true);
+      return;
+    }
+    setIsOptimizing(true);
+    try {
+      const res = await optimizeTrip(currentTrip);
+      setOptimizationResult(res);
+      setIsOptimizationModalOpen(true);
+    } catch (err) {
+      console.error('Failed to run AI optimization:', err);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const handleApplyOptimization = (result: OptimizationResult) => {
+    setCurrentTrip((prev) => {
+      const updatedItinerary = result.optimizedItinerary && result.optimizedItinerary.length > 0
+        ? result.optimizedItinerary
+        : prev.itinerary;
+
+      // Calculate new activity budget
+      const newActivityTotal = updatedItinerary.reduce(
+        (sum, d) => sum + d.activities.reduce((dSum, a) => dSum + (a.estimatedCost || 0), 0),
+        0
+      );
+
+      const flights = prev.budget.flights || 0;
+      const newTotalBudget = prev.budget.hotel + flights + prev.budget.food + prev.budget.transportation + newActivityTotal + prev.budget.miscellaneous;
+
+      const updatedNotes = [
+        ...prev.aiNotes,
+        `✨ Applied AI Optimization: ${result.summary} (Health Score ${result.healthScoreBefore} → ${result.healthScoreAfter}, Saved: ₹${result.estimatedSavings.toLocaleString('en-IN')})`
+      ];
+
+      return {
+        ...prev,
+        itinerary: updatedItinerary,
+        budget: {
+          ...prev.budget,
+          activities: newActivityTotal,
+          total: newTotalBudget
+        },
+        aiNotes: updatedNotes
+      };
+    });
+
+    try {
+      confetti({
+        particleCount: 75,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
+    } catch (e) {}
+
+    setIsOptimizationModalOpen(false);
+  };
 
   const handleViewBudget = (subTab?: 'itemized' | 'calculator' | 'optimizer' | 'splitter') => {
     if (subTab) {
@@ -322,6 +388,7 @@ export default function App() {
             onAddActivity={handleAddActivity}
             onApplyReplan={handleApplyReplan}
             onApplyHealthImprovement={handleApplyHealthImprovement}
+            onTriggerOptimization={() => handleOpenOptimization()}
             currency={currency}
             isSaved={savedTrips.some((t) => t.id === currentTrip.id)}
             selectedCountry={selectedCountry}
@@ -397,6 +464,18 @@ export default function App() {
         onClose={() => setIsChatOpen(false)}
         trip={currentTrip}
         onApplyAction={handleApplyChatAction}
+        onOpenOptimizationModal={handleOpenOptimization}
+        onApplyOptimization={handleApplyOptimization}
+      />
+
+      {/* AI Before vs After Optimization Review & Approval Modal */}
+      <AIOptimizationModal
+        isOpen={isOptimizationModalOpen}
+        onClose={() => setIsOptimizationModalOpen(false)}
+        trip={currentTrip}
+        optimizationResult={optimizationResult}
+        onApplyOptimization={handleApplyOptimization}
+        currency={currency}
       />
 
       {/* Add Custom Activity Modal */}

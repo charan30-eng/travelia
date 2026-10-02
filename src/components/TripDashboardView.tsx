@@ -53,6 +53,9 @@ import { GroupTripSection } from './GroupTripSection';
 import { TravelSafetySection } from './TravelSafetySection';
 import { EstimatedBudgetSection } from './EstimatedBudgetSection';
 import { TripFlightsSection } from './TripFlightsSection';
+import { TripHealthScoreCard } from './TripHealthScoreCard';
+import { WeatherWidgetStrip } from './WeatherWidgetStrip';
+import { PackingAssistantSection } from './PackingAssistantSection';
 import confetti from 'canvas-confetti';
 
 interface TripDashboardViewProps {
@@ -67,6 +70,7 @@ interface TripDashboardViewProps {
   onAddActivity: (dayNumber: number) => void;
   onApplyReplan?: (suggestion: SmartReplanSuggestion) => void;
   onApplyHealthImprovement?: (improvement: HealthScoreImprovement) => void;
+  onTriggerOptimization?: () => void;
   currency: Currency;
   isSaved?: boolean;
   selectedCountry?: CountryCurrencyInfo;
@@ -90,6 +94,7 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
   onAddActivity,
   onApplyReplan,
   onApplyHealthImprovement,
+  onTriggerOptimization,
   currency,
   isSaved = false,
   selectedCountry,
@@ -413,6 +418,17 @@ END:VCALENDAR`;
 
           {/* Top Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {onTriggerOptimization && (
+              <button
+                id="hero-ai-optimize-btn"
+                onClick={onTriggerOptimization}
+                className="px-4 py-2 rounded-full bg-emerald-400 hover:bg-emerald-300 text-neutral-950 text-xs font-black shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ring-2 ring-emerald-300/50"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-current" />
+                <span>AI Optimize Itinerary</span>
+              </button>
+            )}
+
             <button
               onClick={() => handleOpenSmartReplanWithReason()}
               className="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-extrabold shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
@@ -645,16 +661,42 @@ END:VCALENDAR`;
       </div>
 
       {/* QUICK FEATURE NAVIGATION JUMP-BAR */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
         <button
-          onClick={() => scrollToSection('section-budget')}
-          className="p-3.5 rounded-2xl bg-white border border-[#344E27]/30 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
+          onClick={() => scrollToSection('section-health')}
+          className="p-3 rounded-2xl bg-white border border-emerald-500/40 hover:border-emerald-600 transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#344E27] text-white flex items-center justify-center group-hover:scale-105 transition-all shrink-0">
-            <DollarSign className="w-4 h-4" />
+          <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center group-hover:scale-105 transition-all shrink-0">
+            <Sparkles className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Estimate ({destinationCountry.currencyCode})</span>
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Health Score</span>
+            <span className="text-xs font-extrabold text-emerald-800 truncate block">Diagnostics</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => scrollToSection('section-weather')}
+          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
+        >
+          <div className="w-7 h-7 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors shrink-0">
+            <Navigation className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Weather</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Forecast</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => scrollToSection('section-budget')}
+          className="p-3 rounded-2xl bg-white border border-[#344E27]/30 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
+        >
+          <div className="w-7 h-7 rounded-xl bg-[#344E27] text-white flex items-center justify-center group-hover:scale-105 transition-all shrink-0">
+            <DollarSign className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Budget ({destinationCountry.currencyCode})</span>
             <span className="text-xs font-extrabold text-[#344E27] truncate block">
               {formatINR(totalTripBudgetWithAirfare)}
             </span>
@@ -663,58 +705,92 @@ END:VCALENDAR`;
 
         <button
           onClick={() => scrollToSection('section-flights')}
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
+          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
-            <Plane className="w-4 h-4" />
+          <div className="w-7 h-7 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
+            <Plane className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Aviation</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Flights & Passes</span>
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Aviation</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Flights</span>
           </div>
         </button>
 
         <button
           onClick={() => scrollToSection('section-map')}
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
+          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
-            <Map className="w-4 h-4" />
+          <div className="w-7 h-7 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
+            <Map className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Visualizer</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Route Map</span>
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Route</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Map</span>
           </div>
         </button>
 
         <button
           onClick={() => scrollToSection('section-group')}
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
+          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
-            <Users className="w-4 h-4" />
+          <div className="w-7 h-7 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
+            <Users className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Members</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Group Hub</span>
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Group</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Members</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => scrollToSection('section-packing')}
+          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
+        >
+          <div className="w-7 h-7 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
+            <BadgeCheck className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Gear</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Packing</span>
           </div>
         </button>
 
         <button
           onClick={() => scrollToSection('section-safety')}
-          className="p-3.5 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2.5 shadow-2xs group text-left cursor-pointer"
+          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
-            <ShieldCheck className="w-4 h-4" />
+          <div className="w-7 h-7 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
+            <ShieldCheck className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Safety & Intel</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Emergency 112</span>
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Safety</span>
+            <span className="text-xs font-extrabold text-[#191919] truncate block">Guide</span>
           </div>
         </button>
       </div>
 
+      {/* FEATURE: AI TRIP HEALTH SCORE CARD */}
+      <div id="section-health">
+        <TripHealthScoreCard
+          trip={trip}
+          onApplyImprovement={onApplyHealthImprovement || (() => {})}
+          onTriggerOptimization={onTriggerOptimization}
+        />
+      </div>
 
+      {/* FEATURE: WEATHER FORECAST & METEOROLOGICAL RADAR */}
+      <div id="section-weather">
+        <WeatherWidgetStrip
+          trip={trip}
+          activeDay={activeDay}
+          onSelectDay={(day) => setActiveDay(day)}
+          onTriggerWeatherReplan={(day) => {
+            setActiveDay(day);
+            setReplanPresetDisruption('rain');
+            setIsSmartReplanOpen(true);
+          }}
+        />
+      </div>
 
       {/* ========================================================================= */}
       {/* ITINERARY TIMELINE & ACTIVITY MASTER HUB */}
@@ -1312,6 +1388,11 @@ END:VCALENDAR`;
           ))}
         </div>
       </section>
+
+      {/* FEATURE 5: AI PACKING ASSISTANT */}
+      <div id="section-packing">
+        <PackingAssistantSection trip={trip} />
+      </div>
 
       {/* FEATURE 6: TRAVEL SAFETY & LOCAL GUIDANCE */}
       <div id="section-safety">
