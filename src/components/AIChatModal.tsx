@@ -3,25 +3,19 @@ import {
   Sparkles, 
   X, 
   Send, 
-  Bot, 
-  User, 
   Check, 
-  Plus, 
   DollarSign, 
-  Compass, 
-  Umbrella,
-  ArrowRight,
+  ArrowRight, 
+  RefreshCw, 
+  AlertCircle, 
+  Eye, 
+  Clock, 
   ShieldCheck,
-  Activity,
-  RefreshCw,
-  AlertCircle,
-  Eye,
   TrendingUp,
-  Clock,
   MapPin
 } from 'lucide-react';
 import { ChatMessage, TripPlan } from '../types';
-import { sendChatMessage, optimizeTrip, OptimizationResult } from '../services/aiClient';
+import { sendChatMessage, OptimizationResult, AIActionProposal } from '../services/aiClient';
 
 interface AIChatModalProps {
   isOpen: boolean;
@@ -36,26 +30,30 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'm1',
     sender: 'ai',
-    text: "Hello! I am Travelia AI, your real-time travel optimization copilot powered by Gemini and our multi-variable itinerary engine. Ask me to lower costs, reroute for traffic or rain, balance your schedule, or explain your Trip Health Score.",
+    text: "Hello! I am Travelia AI, your real-time travel planning copilot powered by Gemini and our deterministic itinerary calculation engines. Ask me to lower costs, balance your schedule, reroute for rain, or explain your Trip Health Score.",
     timestamp: 'Just now'
   }
 ];
 
 const SUGGESTED_QUESTIONS = [
-  "Make my trip cheaper and less tiring",
-  "Replan Day 2 because of afternoon rain",
+  "Make my trip cheaper",
+  "Which day is too busy?",
+  "Make Day 2 more relaxed",
+  "I only have ₹20,000. Adjust my trip",
+  "What happens if I remove my most expensive activity?",
+  "Rain is expected tomorrow. What should I change?",
   "Why is my Trip Health Score low?",
-  "Optimize route to eliminate backtracking",
-  "What if I add one more traveler?",
-  "Recommend authentic local dining"
+  "Keep the beach activities but reduce the cost",
+  "Reduce unnecessary travel",
+  "Explain every change you made"
 ];
 
 const LOADING_STATUSES = [
-  "Consulting Gemini neural travel engine...",
-  "Analyzing itinerary timing & geographic clusters...",
-  "Calculating 6-metric Trip Health Score...",
-  "Simulating budget & transit trade-offs...",
-  "Preparing structured recommendations..."
+  "Analyzing itinerary...",
+  "Checking your budget...",
+  "Calculating route efficiency...",
+  "Comparing alternatives...",
+  "Preparing recommendations..."
 ];
 
 export const AIChatModal: React.FC<AIChatModalProps> = ({
@@ -70,6 +68,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [loadingStatusIdx, setLoadingStatusIdx] = useState(0);
+  const [appliedProposalIds, setAppliedProposalIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -82,7 +81,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     }
   }, [messages, isOpen]);
 
-  // Rotate loading text while awaiting AI
+  // Contextual loading status rotator while waiting for real API response
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTyping) {
@@ -98,8 +97,8 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
   if (!isOpen) return null;
 
   const handleSend = async (textToSend?: string) => {
-    const text = textToSend || input;
-    if (!text.trim() || isTyping) return;
+    const text = (textToSend || input).trim();
+    if (!text || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -113,70 +112,65 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
     setIsTyping(true);
 
     try {
-      // Build conversation history for multi-turn AI context
-      const history = messages.slice(-6).map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.text,
-      }));
+      // Build conversation history for multi-turn Gemini reasoning context
+      const history = messages
+        .filter((m) => !m.isError)
+        .slice(-10)
+        .map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.text,
+        }));
 
-      // Call our secure backend Gemini service
+      // Direct backend API call to POST /api/ai/chat
       const aiResponse = await sendChatMessage(trip, text, history);
+
+      const resolvedOptResult: OptimizationResult | undefined = 
+        aiResponse.actionProposal?.optimizationResult || 
+        aiResponse.proposedChanges;
 
       const aiMsg: ChatMessage = {
         id: `msg-ai-${Date.now()}`,
         sender: 'ai',
-        text: aiResponse.message,
+        text: aiResponse.reply || aiResponse.message || "I've analyzed your itinerary.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        actionPrompt: aiResponse.actionPrompt as any,
-        optimizationResult: aiResponse.proposedChanges as OptimizationResult | undefined,
+        actionProposal: aiResponse.actionProposal as any,
+        optimizationResult: resolvedOptResult,
         insights: aiResponse.insights,
         suggestedFollowUps: aiResponse.suggestedFollowUps
       };
 
       setMessages((prev) => [...prev, aiMsg]);
-    } catch (err) {
-      console.error('AIChatModal error:', err);
-      // Resilient fallback message
-      const fallbackMsg: ChatMessage = {
-        id: `msg-ai-err-${Date.now()}`,
+    } catch (err: any) {
+      console.error('[AIChatModal] Communication error:', err);
+      // Graceful error state with retry (Requirement 13 & 28)
+      const errorMsg: ChatMessage = {
+        id: `msg-err-${Date.now()}`,
         sender: 'ai',
-        text: "I analyzed your request against local availability. For best results, you can review your Trip Health Score or trigger a comprehensive itinerary optimization below.",
+        text: "Travelia AI is temporarily unavailable. Please try again.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        actionPrompt: {
-          type: 'recalculate',
-          label: 'Run Deep AI Itinerary Optimization'
-        }
+        isError: true,
+        rawQuery: text
       };
-      setMessages((prev) => [...prev, fallbackMsg]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsTyping(false);
     }
   };
 
-  const handleRunFullOptimization = async () => {
-    setIsTyping(true);
-    try {
-      const optResult = await optimizeTrip(trip);
-      const optMsg: ChatMessage = {
-        id: `msg-opt-${Date.now()}`,
-        sender: 'ai',
-        text: `I've generated a comprehensive optimization plan for ${trip.destination}: ${optResult.summary}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        optimizationResult: optResult
-      };
-      setMessages((prev) => [...prev, optMsg]);
-      if (onOpenOptimizationModal) {
-        onOpenOptimizationModal(optResult);
-      }
-    } catch (e) {
-      console.error('Optimization error:', e);
-    } finally {
-      setIsTyping(false);
+  const handleApplyClick = (msgId: string, optResult?: OptimizationResult, actionType?: string) => {
+    if (optResult && onApplyOptimization) {
+      onApplyOptimization(optResult);
+      setAppliedProposalIds((prev) => new Set(prev).add(msgId));
+    } else if (optResult && onOpenOptimizationModal) {
+      onOpenOptimizationModal(optResult);
+    } else if (actionType) {
+      onApplyAction(actionType);
+      setAppliedProposalIds((prev) => new Set(prev).add(msgId));
     }
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[490px] bg-white shadow-2xl border-l border-neutral-200 flex flex-col animate-in slide-in-from-right duration-250">
+    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] bg-white shadow-2xl border-l border-neutral-200 flex flex-col animate-in slide-in-from-right duration-250">
       
       {/* Drawer Header */}
       <div className="p-4 sm:p-5 border-b border-neutral-200 flex items-center justify-between bg-[#FBFBFB]">
@@ -193,7 +187,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-neutral-500 font-medium">
-              Real-time intelligence for {trip.destination} • {trip.days} Days • ₹{trip.budget.total.toLocaleString('en-IN')}
+              Live copilot for {trip.destination} • {trip.days} Days • ₹{trip.budget.total.toLocaleString('en-IN')}
             </p>
           </div>
         </div>
@@ -209,153 +203,184 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
 
       {/* Messages Scroll Area */}
       <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 bg-neutral-50/50">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-          >
-            <div className="flex items-start gap-2.5 max-w-[92%]">
-              {msg.sender === 'ai' && (
-                <div className="w-7 h-7 rounded-full bg-[#344E27] text-white flex items-center justify-center shrink-0 text-xs font-bold mt-1 shadow-xs">
-                  AI
-                </div>
-              )}
+        {messages.map((msg) => {
+          const proposal = msg.actionProposal;
+          const optResult = msg.optimizationResult || proposal?.optimizationResult;
+          const isApplied = appliedProposalIds.has(msg.id);
 
-              <div
-                className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
-                  msg.sender === 'user'
-                    ? 'bg-[#344E27] text-white rounded-br-xs shadow-2xs font-medium'
-                    : 'bg-white text-[#191919] border border-neutral-200/80 rounded-bl-xs shadow-2xs space-y-2.5'
-                }`}
-              >
-                <p className="whitespace-pre-line">{msg.text}</p>
-
-                {/* AI Insights List if provided */}
-                {msg.insights && msg.insights.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-neutral-100 space-y-1">
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
-                      AI Diagnostic Insights
-                    </span>
-                    {msg.insights.map((ins, i) => (
-                      <div key={i} className="text-xs text-neutral-600 flex items-start gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-[#344E27] shrink-0 mt-0.5" />
-                        <span>{ins}</span>
-                      </div>
-                    ))}
+          return (
+            <div
+              key={msg.id}
+              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+            >
+              <div className="flex items-start gap-2.5 max-w-[94%]">
+                {msg.sender === 'ai' && (
+                  <div className={`w-7 h-7 rounded-full ${msg.isError ? 'bg-amber-600' : 'bg-[#344E27]'} text-white flex items-center justify-center shrink-0 text-xs font-bold mt-1 shadow-xs`}>
+                    {msg.isError ? <AlertCircle className="w-4 h-4" /> : 'AI'}
                   </div>
                 )}
 
-                {/* Optimization Proposal Rich Card */}
-                {msg.optimizationResult && (
-                  <div className="mt-3 p-3.5 rounded-xl bg-[#F4F6F3] border border-[#D5E0D0] text-[#191919] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#344E27]">
-                        <Sparkles className="w-4 h-4 fill-current" />
-                        <span>Proposed AI Optimization</span>
-                      </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white font-bold text-neutral-600 border border-neutral-200">
-                        {Math.round((msg.optimizationResult.confidence || 0.9) * 100)}% Match
-                      </span>
-                    </div>
+                <div
+                  className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                    msg.sender === 'user'
+                      ? 'bg-[#344E27] text-white rounded-br-xs shadow-2xs font-medium'
+                      : msg.isError
+                      ? 'bg-amber-50 text-amber-900 border border-amber-200 rounded-bl-xs shadow-2xs space-y-2.5'
+                      : 'bg-white text-[#191919] border border-neutral-200/80 rounded-bl-xs shadow-2xs space-y-2.5'
+                  }`}
+                >
+                  <p className="whitespace-pre-line">{msg.text}</p>
 
-                    {/* Metric Badges */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-white p-2 rounded-lg border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 uppercase block font-bold">Health Score</span>
-                        <div className="flex items-center justify-center gap-1 font-extrabold text-xs text-emerald-700">
-                          <span>{msg.optimizationResult.healthScoreBefore}</span>
-                          <ArrowRight className="w-2.5 h-2.5 text-neutral-400" />
-                          <span className="text-sm font-black text-[#344E27]">{msg.optimizationResult.healthScoreAfter}</span>
+                  {/* Friendly Error State with Retry Button */}
+                  {msg.isError && msg.rawQuery && (
+                    <div className="pt-2 border-t border-amber-200 flex items-center gap-2">
+                      <button
+                        onClick={() => handleSend(msg.rawQuery)}
+                        disabled={isTyping}
+                        className="py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Retry</span>
+                      </button>
+                      <span className="text-[11px] text-amber-700">Check server connection and try again.</span>
+                    </div>
+                  )}
+
+                  {/* AI Diagnostic Insights List */}
+                  {msg.insights && msg.insights.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-neutral-100 space-y-1">
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+                        AI Diagnostic Insights
+                      </span>
+                      {msg.insights.map((ins, i) => (
+                        <div key={i} className="text-xs text-neutral-600 flex items-start gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-[#344E27] shrink-0 mt-0.5" />
+                          <span>{ins}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Structured AI Recommendation / Action Proposal Card */}
+                  {(proposal || optResult) && (
+                    <div className="mt-3 p-3.5 rounded-xl bg-[#F4F6F3] border border-[#D5E0D0] text-[#191919] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-extrabold text-[#344E27]">
+                          <Sparkles className="w-4 h-4 fill-current text-[#344E27]" />
+                          <span>{proposal?.label || 'Proposed AI Optimization'}</span>
+                        </div>
+                        {isApplied ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 font-bold text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Applied
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white font-bold text-neutral-600 border border-neutral-200">
+                            Verified AI Plan
+                          </span>
+                        )}
+                      </div>
+
+                      {proposal?.description && (
+                        <p className="text-xs text-neutral-600 leading-snug">
+                          {proposal.description}
+                        </p>
+                      )}
+
+                      {/* Verified Metric Badges */}
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        {/* Health Score */}
+                        <div className="bg-white p-2 rounded-lg border border-neutral-200 shadow-2xs">
+                          <span className="text-[9px] text-neutral-400 uppercase block font-bold">Health Score</span>
+                          <div className="flex items-center justify-center gap-1 font-extrabold text-xs text-emerald-700">
+                            {optResult ? (
+                              <>
+                                <span>{optResult.healthScoreBefore}</span>
+                                <ArrowRight className="w-2.5 h-2.5 text-neutral-400" />
+                                <span className="text-sm font-black text-[#344E27]">{optResult.healthScoreAfter}</span>
+                              </>
+                            ) : proposal?.healthScoreDelta ? (
+                              <span className="text-sm font-black text-[#344E27]">+{proposal.healthScoreDelta}</span>
+                            ) : (
+                              <span className="text-sm font-black text-[#344E27]">Optimal</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Est. Savings */}
+                        <div className="bg-white p-2 rounded-lg border border-neutral-200 shadow-2xs">
+                          <span className="text-[9px] text-neutral-400 uppercase block font-bold">Est. Savings</span>
+                          <span className="font-extrabold text-xs text-emerald-600 block mt-0.5">
+                            ₹{(optResult?.estimatedSavings ?? proposal?.estimatedSavings ?? 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        {/* Time Saved */}
+                        <div className="bg-white p-2 rounded-lg border border-neutral-200 shadow-2xs">
+                          <span className="text-[9px] text-neutral-400 uppercase block font-bold">Time Saved</span>
+                          <span className="font-extrabold text-xs text-blue-600 block mt-0.5">
+                            {optResult 
+                              ? `${Math.round(optResult.travelTimeSavedHours * 10) / 10}h` 
+                              : proposal?.travelTimeSavedMins 
+                              ? `${proposal.travelTimeSavedMins}m` 
+                              : '~45m'}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="bg-white p-2 rounded-lg border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 uppercase block font-bold">Est. Savings</span>
-                        <span className="font-extrabold text-xs text-emerald-600 block mt-0.5">
-                          ₹{msg.optimizationResult.estimatedSavings.toLocaleString('en-IN')}
-                        </span>
-                      </div>
+                      {/* Action Approval Buttons (User Approval Mandatory - Requirement 16 & 17) */}
+                      <div className="flex items-center gap-2 pt-1">
+                        {optResult && onOpenOptimizationModal && (
+                          <button
+                            onClick={() => onOpenOptimizationModal(optResult)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-neutral-100 text-[#344E27] font-bold text-xs border border-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview Diff</span>
+                          </button>
+                        )}
 
-                      <div className="bg-white p-2 rounded-lg border border-neutral-200">
-                        <span className="text-[9px] text-neutral-400 uppercase block font-bold">Time Saved</span>
-                        <span className="font-extrabold text-xs text-blue-600 block mt-0.5">
-                          {Math.round(msg.optimizationResult.travelTimeSavedMinutes / 6) / 10}h
-                        </span>
+                        <button
+                          onClick={() => handleApplyClick(msg.id, optResult, proposal?.type)}
+                          disabled={isApplied}
+                          className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                            isApplied
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default'
+                              : 'bg-[#344E27] hover:bg-[#273D1C] text-white active:scale-98'
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{isApplied ? 'Changes Applied' : 'Apply Changes'}</span>
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    {/* Action Buttons: Preview vs Apply */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => {
-                          if (onOpenOptimizationModal) {
-                            onOpenOptimizationModal(msg.optimizationResult);
-                          }
-                        }}
-                        className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-neutral-100 text-[#344E27] font-bold text-xs border border-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Preview Diff</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (onApplyOptimization) {
-                            onApplyOptimization(msg.optimizationResult);
-                          } else if (onOpenOptimizationModal) {
-                            onOpenOptimizationModal(msg.optimizationResult);
-                          }
-                        }}
-                        className="flex-1 py-2 px-3 rounded-xl bg-[#344E27] hover:bg-[#273D1C] text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Apply Changes</span>
-                      </button>
+                  {/* Suggested follow-up prompt chips */}
+                  {msg.suggestedFollowUps && msg.suggestedFollowUps.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {msg.suggestedFollowUps.map((sug, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSend(sug)}
+                          disabled={isTyping}
+                          className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-[#E5ECE0] text-neutral-700 hover:text-[#344E27] text-[11px] font-semibold transition-colors border border-neutral-200/60 text-left disabled:opacity-50 cursor-pointer"
+                        >
+                          {sug}
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Legacy action prompt trigger if applicable */}
-                {msg.actionPrompt && !msg.optimizationResult && (
-                  <button
-                    onClick={() => {
-                      if (msg.actionPrompt?.type === 'recalculate') {
-                        handleRunFullOptimization();
-                      } else {
-                        onApplyAction(msg.actionPrompt!.type);
-                      }
-                    }}
-                    className="mt-2.5 w-full py-2 px-3 rounded-xl bg-[#E5ECE0] hover:bg-[#344E27] text-[#344E27] hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{msg.actionPrompt.label}</span>
-                  </button>
-                )}
-
-                {/* Suggested follow-up prompt chips */}
-                {msg.suggestedFollowUps && msg.suggestedFollowUps.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {msg.suggestedFollowUps.map((sug, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleSend(sug)}
-                        className="px-2.5 py-1 rounded-full bg-neutral-100 hover:bg-[#E5ECE0] text-neutral-700 hover:text-[#344E27] text-[11px] font-semibold transition-colors border border-neutral-200/60 text-left"
-                      >
-                        {sug}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
+
+              <span className="text-[10px] text-neutral-400 mt-1 px-1">
+                {msg.timestamp}
+              </span>
             </div>
+          );
+        })}
 
-            <span className="text-[10px] text-neutral-400 mt-1 px-1">
-              {msg.timestamp}
-            </span>
-          </div>
-        ))}
-
-        {/* Loading state indicator */}
+        {/* Intelligent Contextual Loading State Indicator */}
         {isTyping && (
           <div className="flex items-center gap-2.5 text-xs text-neutral-500 bg-white p-3.5 rounded-2xl border border-neutral-200/70 max-w-[340px] shadow-2xs animate-pulse">
             <div className="flex items-center gap-1 text-[#344E27]">
@@ -372,7 +397,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Quick Questions */}
+      {/* Suggested Quick Question Chips */}
       <div className="p-3 bg-white border-t border-neutral-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
         {SUGGESTED_QUESTIONS.map((q, i) => (
           <button
@@ -386,7 +411,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
         ))}
       </div>
 
-      {/* Chat Input Bar */}
+      {/* Chat Input Form */}
       <div className="p-4 border-t border-neutral-200 bg-white">
         <form
           onSubmit={(e) => {

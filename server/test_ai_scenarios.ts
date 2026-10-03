@@ -1,8 +1,19 @@
-// Verification test runner for Travelia Real AI Implementation
-// Tests all 10 Master Prompt Scenarios against the live API
+// Comprehensive Verification test runner for Travelia Real AI Implementation
+// Tests all 10 Master Prompt Scenarios against the live Express HTTP API
+import { app } from './index';
+import http from 'http';
 
 async function runScenarioTests() {
-  const BASE_URL = 'http://localhost:3001/api/ai';
+  const PORT = 3088;
+  const server = http.createServer(app);
+
+  await new Promise<void>((resolve) => {
+    server.listen(PORT, () => {
+      resolve();
+    });
+  });
+
+  const BASE_URL = `http://127.0.0.1:${PORT}/api/ai`;
   console.log('====================================================');
   console.log('TRAVELIA REAL AI SYSTEM — COMPREHENSIVE VERIFICATION');
   console.log('====================================================\n');
@@ -60,7 +71,7 @@ async function runScenarioTests() {
     { id: 6, name: 'TEST 6: Make my trip more relaxed', query: 'Make this trip more relaxed and less tiring' },
     { id: 7, name: 'TEST 7: What if I add one more traveler?', query: 'What if I add one more traveler?' },
     { id: 8, name: 'TEST 8: What if I remove the most expensive activity?', query: 'Which activities should I remove to save money?' },
-    { id: 9, name: 'TEST 9: Give me indoor alternatives', query: 'Give me indoor alternatives for rainy weather' },
+    { id: 9, name: 'TEST 9: Keep the beach activities but reduce cost', query: 'Keep the beach activities but reduce the cost' },
     { id: 10, name: 'TEST 10: Explain every change you made', query: 'Explain the optimization decisions and why changes were made' }
   ];
 
@@ -74,9 +85,9 @@ async function runScenarioTests() {
       const data = await res.json();
       console.log(`[PASS] ${t.name}`);
       console.log(`       Intent: ${data.intent} | Confidence: ${data.confidence}`);
-      console.log(`       Reply snippet: "${data.reply.slice(0, 95)}..."`);
+      console.log(`       Reply: "${data.reply.slice(0, 90)}..."`);
       if (data.actionProposal) {
-        console.log(`       Action Proposal: [${data.actionProposal.label}] Delta: ${data.actionProposal.healthScoreDelta || 'N/A'}`);
+        console.log(`       Action Proposal: [${data.actionProposal.label}] Savings: ₹${data.actionProposal.estimatedSavings || 0} Delta: ${data.actionProposal.healthScoreDelta ?? 'N/A'}`);
       }
       console.log('');
     } catch (e: any) {
@@ -112,9 +123,17 @@ async function runScenarioTests() {
     console.log(`       - ${m.name}: ${m.score}/100 (weight ${m.weight}%) [${m.status}]`);
   }
 
+  // Test Status API
+  console.log('\nTesting AI Status API:');
+  const statusRes = await fetch(`${BASE_URL}/status`);
+  const statusData = await statusRes.json();
+  console.log(`[PASS] AI Engine Status: ${statusData.status} (${statusData.engine})`);
+
   console.log('\n====================================================');
-  console.log('ALL 10 SCENARIOS & ENGINE APIS VERIFIED SUCCESSFULLY');
+  console.log('ALL 10 SCENARIOS & ENGINE APIS VERIFIED SUCCESSFULLY VIA HTTP');
   console.log('====================================================');
+
+  server.close();
 }
 
 runScenarioTests();

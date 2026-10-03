@@ -142,6 +142,18 @@ export interface ChatMessage {
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
+  actionProposal?: {
+    type: string;
+    label: string;
+    description: string;
+    estimatedSavings?: number;
+    healthScoreDelta?: number;
+    healthScoreBefore?: number;
+    healthScoreAfter?: number;
+    travelTimeSavedMins?: number;
+    optimizationResult?: any;
+    payload?: any;
+  };
   actionPrompt?: {
     type: 'add_beach' | 'discount_hotel' | 'add_restaurant' | 'recalculate' | 'smart_replan' | 'optimize_route' | 'packing_list';
     label: string;
@@ -150,6 +162,8 @@ export interface ChatMessage {
   insights?: string[];
   suggestedFollowUps?: string[];
   changes?: any[];
+  isError?: boolean;
+  rawQuery?: string;
 }
 
 // 1. SMART REPLAN

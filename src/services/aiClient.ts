@@ -2,6 +2,7 @@ import {
   TripContext, 
   AIChatRequest, 
   AIChatResponse, 
+  AIActionProposal,
   OptimizationResult, 
   ComputedHealthScore, 
   WeatherReplanRequest, 
@@ -15,6 +16,7 @@ export type {
   TripContext, 
   AIChatRequest, 
   AIChatResponse, 
+  AIActionProposal,
   OptimizationResult, 
   ComputedHealthScore, 
   WeatherReplanRequest, 
@@ -33,6 +35,9 @@ export function formatTripForAI(trip: TripPlan): TripContext {
     spentSum = (trip.budget?.hotel || 0) + (trip.budget?.food || 0) + (trip.budget?.transportation || 0) + (trip.budget?.activities || 0);
   }
 
+  const selectedHotel = trip.hotels?.find(h => h.selected) || trip.hotels?.[0];
+  const dateParts = trip.travelDates?.split('-').map(s => s.trim()) || [];
+
   return {
     id: trip.id,
     destination: trip.destination,
@@ -40,10 +45,13 @@ export function formatTripForAI(trip: TripPlan): TripContext {
     days: trip.days,
     travelers: trip.travelers,
     travelDates: trip.travelDates,
+    startDate: dateParts[0] || undefined,
+    endDate: dateParts[1] || undefined,
     budget: {
       currency: 'INR',
       total: declaredBudget,
       spent: spentSum,
+      remainingBudget: Math.max(0, declaredBudget - spentSum),
       hotel: trip.budget?.hotel,
       flights: trip.budget?.flights,
       food: trip.budget?.food,
@@ -56,6 +64,10 @@ export function formatTripForAI(trip: TripPlan): TripContext {
       foodPreference: trip.foodPreference,
       transportPreference: trip.transportType,
       activityPreferences: trip.preferences
+    },
+    existingBookings: {
+      hotel: selectedHotel?.name,
+      hotelCategory: trip.hotelCategory
     },
     itinerary: trip.itinerary || []
   };
@@ -85,12 +97,25 @@ export async function sendChatMessage(
   });
 
   if (!res.ok) {
-    throw new Error(`AI Chat error: ${res.statusText}`);
+    let errorDetail = res.statusText;
+    try {
+      const errJson = await res.json();
+      if (errJson?.error || errJson?.message) {
+        errorDetail = errJson.error || errJson.message;
+      }
+    } catch {}
+    throw new Error(`AI Chat error: ${errorDetail}`);
   }
 
   const data: AIChatResponse = await res.json();
   if (!data.message && data.reply) {
     data.message = data.reply;
+  }
+  if (!data.reply && data.message) {
+    data.reply = data.message;
+  }
+  if (data.actionProposal?.optimizationResult && !data.proposedChanges) {
+    data.proposedChanges = data.actionProposal.optimizationResult;
   }
   return data;
 }

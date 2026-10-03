@@ -1,5 +1,19 @@
 import { TripPlan, ItineraryDay, ItineraryActivity, TripPreference, Currency } from '../../src/types';
 
+export type AIIntent = 
+  | 'question' 
+  | 'optimization' 
+  | 'weather_alert' 
+  | 'budget' 
+  | 'schedule_inquiry' 
+  | 'route_optimization' 
+  | 'health_score' 
+  | 'what_if' 
+  | 'activity_recommendation' 
+  | 'packing' 
+  | 'safety' 
+  | 'general';
+
 export interface TripContext {
   id?: string;
   destination: string;
@@ -7,10 +21,13 @@ export interface TripContext {
   days: number;
   travelers: number;
   travelDates?: string;
+  startDate?: string;
+  endDate?: string;
   budget: {
     currency: Currency;
     total: number;
     spent?: number;
+    remainingBudget?: number;
     hotel?: number;
     flights?: number;
     food?: number;
@@ -24,6 +41,12 @@ export interface TripContext {
     transportPreference?: string;
     activityPreferences?: TripPreference[];
   };
+  existingBookings?: {
+    hotel?: string;
+    flights?: string;
+    hotelCategory?: string;
+  };
+  healthScore?: number;
   itinerary: ItineraryDay[];
 }
 
@@ -39,13 +62,16 @@ export interface AIActionProposal {
   description: string;
   estimatedSavings?: number;
   healthScoreDelta?: number;
+  healthScoreBefore?: number;
+  healthScoreAfter?: number;
   travelTimeSavedMins?: number;
+  optimizationResult?: OptimizationResult;
   payload?: any;
 }
 
 export interface AIChatResponse {
   reply: string;
-  intent: 'question' | 'optimization' | 'weather_alert' | 'budget' | 'schedule_inquiry' | 'general';
+  intent: AIIntent;
   actionProposal?: AIActionProposal;
   suggestedFollowUps?: string[];
   confidence: number;
@@ -53,6 +79,7 @@ export interface AIChatResponse {
   actionPrompt?: any;
   proposedChanges?: any;
   insights?: string[];
+  deterministicCalculationsUsed?: boolean;
 }
 
 export interface ActivityChange {

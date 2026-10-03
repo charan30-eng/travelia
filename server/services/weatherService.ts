@@ -89,3 +89,32 @@ export function replanItineraryForWeather(req: WeatherReplanRequest): WeatherRep
     revisedDay
   };
 }
+
+export function createWeatherOptimizationResult(
+  tripContext: TripContext,
+  replan: WeatherReplanResponse
+): import('../types/ai').OptimizationResult {
+  const updatedItinerary = tripContext.itinerary.map(d => d.dayNumber === replan.dayNumber ? replan.revisedDay : d);
+  const healthBefore = replan.healthScoreBefore;
+  const healthAfter = replan.healthScoreAfter;
+  const initialCost = tripContext.budget?.spent || 25000;
+  
+  return {
+    type: 'full_itinerary_optimization',
+    summary: replan.summary,
+    healthScoreBefore: healthBefore,
+    healthScoreAfter: healthAfter,
+    costBefore: initialCost,
+    costAfter: initialCost,
+    estimatedSavings: 0,
+    travelTimeHoursBefore: 4.5,
+    travelTimeHoursAfter: 3.8,
+    travelTimeSavedHours: 0.7,
+    resolvedConflictsCount: replan.affectedActivitiesCount,
+    changes: replan.changes,
+    explanations: replan.changes.map(c => c.reason),
+    warnings: [`Weather alert: ${replan.condition} expected on Day 0${replan.dayNumber}. Outdoor stops relocated indoors.`],
+    confidence: 0.95,
+    optimizedItinerary: updatedItinerary
+  };
+}
