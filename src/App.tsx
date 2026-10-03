@@ -125,12 +125,13 @@ export default function App() {
     destination: string, 
     days: number, 
     travelers: number, 
-    preferences: TripPreference[]
+    preferences: TripPreference[],
+    customDates?: string
   ) => {
     setIsGenerating(true);
     
     setTimeout(() => {
-      const generated = generateTripFromPrompt(destination, days, travelers, preferences);
+      const generated = generateTripFromPrompt(destination, days, travelers, preferences, customDates);
       setCurrentTrip(generated);
       setSelectedCountry(detectCountryFromDestination(generated.destination, generated.country));
       setIsGenerating(false);
@@ -265,16 +266,40 @@ export default function App() {
   // AI Chat Actions
   const handleApplyChatAction = (actionType: string) => {
     if (actionType === 'discount_hotel') {
-      setCurrentTrip((prev) => ({
-        ...prev,
-        hotelCategory: 'mid',
-        budget: {
-          ...prev.budget,
-          hotel: Math.round(prev.budget.hotel * 0.85),
-          total: Math.round(prev.budget.total - 4500)
-        },
-        aiNotes: [...prev.aiNotes, 'Applied AI ₹4,500 budget reduction optimization.']
-      }));
+      setCurrentTrip((prev) => {
+        const nights = prev.nights || Math.max(1, (prev.days || 1) - 1);
+        const currentHotel = prev.hotels?.find(h => h.selected) || prev.hotels?.[0];
+        const lowerTierHotel = prev.hotels?.find(h => !h.selected && h.pricePerNight < (currentHotel?.pricePerNight || 4200));
+
+        if (lowerTierHotel && currentHotel) {
+          const savingsPerNight = Math.max(0, currentHotel.pricePerNight - lowerTierHotel.pricePerNight);
+          const totalSavings = savingsPerNight * nights;
+          const newHotelBudget = lowerTierHotel.pricePerNight * nights;
+          return {
+            ...prev,
+            hotelCategory: 'mid',
+            hotels: prev.hotels.map(h => ({ ...h, selected: h.id === lowerTierHotel.id })),
+            budget: {
+              ...prev.budget,
+              hotel: newHotelBudget,
+              total: Math.max(0, prev.budget.total - totalSavings)
+            },
+            aiNotes: [...prev.aiNotes, `Switched hotel to ${lowerTierHotel.name} (saves verified ₹${totalSavings.toLocaleString('en-IN')}).`]
+          };
+        }
+
+        const currentCost = prev.budget.hotel || 0;
+        return {
+          ...prev,
+          hotelCategory: 'mid',
+          budget: {
+            ...prev.budget,
+            hotel: currentCost,
+            total: prev.budget.total
+          },
+          aiNotes: [...prev.aiNotes, 'Hotel selection optimized to current verified rate.']
+        };
+      });
     } else if (actionType === 'add_beach') {
       setCurrentTrip((prev) => ({
         ...prev,

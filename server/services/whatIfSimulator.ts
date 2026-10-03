@@ -1,28 +1,36 @@
 import { TripContext, WhatIfScenarioRequest, WhatIfScenarioResponse } from '../types/ai';
 import { calculateDynamicHealthScore } from './healthScoreService';
+import { calculateTripCost } from './tripCostService';
+import { calculateTripRouteMetrics } from '../../src/data/geoRouting';
+import { optimizeTripItinerary } from './itineraryOptimizer';
 
 export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenarioResponse {
   const { tripContext, scenarioType, parameters } = req;
   const healthBefore = calculateDynamicHealthScore(tripContext);
+  const costBefore = calculateTripCost(tripContext);
+  const routeBefore = calculateTripRouteMetrics(tripContext);
 
-  const totalActivities = tripContext.itinerary.reduce((acc, d) => acc + (d.activities?.length || 0), 0);
-  const baselineTravelHours = Math.round((totalActivities * 0.85 + (tripContext.itinerary.length * 1.2)) * 10) / 10;
-  const currentBudget = tripContext.budget?.total || 25000;
+  const totalActivities = (tripContext.itinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0);
+  const baselineTravelHours = routeBefore.totalTravelHours;
+  const currentBudget = costBefore.totalCost;
 
   if (scenarioType === 'budget_change') {
     const target = parameters.targetBudget || 20000;
     const diff = target - currentBudget;
     const isReduction = diff < 0;
 
-    const projectedHealth = isReduction 
-      ? Math.max(65, healthBefore.overallScore - 5)
-      : Math.min(98, healthBefore.overallScore + 6);
+    const opt = optimizeTripItinerary(tripContext, 0.15, { targetBudget: target });
+    const projectedHealth = opt.healthScoreAfter;
+    const projectedCost = opt.costAfter;
+    const projectedTravelHours = opt.travelTimeHoursAfter;
+    const projectedActivities = (opt.optimizedItinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0);
+    const savings = opt.estimatedSavings;
 
     return {
-      scenarioTitle: `What-if Budget Adjusted to ₹${target.toLocaleString()}`,
+      scenarioTitle: `What-if Budget Adjusted to ₹${target.toLocaleString('en-IN')}`,
       narrative: isReduction
-        ? `Reducing budget by ₹${Math.abs(diff).toLocaleString()} requires shifting private chauffeur transit to metro/cabs and opting for city combo attraction passes.`
-        : `Increasing budget by ₹${diff.toLocaleString()} unlocks boutique hotel upgrades, private boat transfers, and fine dining reservations.`,
+        ? `Adjusting budget ceiling to ₹${target.toLocaleString('en-IN')} saves ₹${savings.toLocaleString('en-IN')} by replacing luxury charters and optimizing attraction tiers.`
+        : `Increasing budget to ₹${target.toLocaleString('en-IN')} expands buffer for premium dining and boutique upgrades.`,
       currentState: {
         totalBudget: currentBudget,
         healthScore: healthBefore.overallScore,
@@ -30,34 +38,54 @@ export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenar
         activityCount: totalActivities
       },
       projectedState: {
-        totalBudget: target,
+        totalBudget: projectedCost,
         healthScore: projectedHealth,
-        travelTimeHours: baselineTravelHours,
-        activityCount: isReduction ? Math.max(2, totalActivities - 1) : totalActivities + 1
+        travelTimeHours: projectedTravelHours,
+        activityCount: projectedActivities
       },
       keyImpacts: [
-        isReduction ? `Need to economize ₹${Math.abs(diff).toLocaleString()} across lodging and dining.` : `Unlocks ₹${diff.toLocaleString()} buffer for premium experiences.`,
-        `Projected Trip Health Score shifts to ${projectedHealth}/100.`,
-        isReduction ? 'Recommended: Replace 1 paid nightlife tour with sunset beach walk.' : 'Recommended: Add private sunset catamaran cruise.'
+        isReduction ? `Itinerary spend reduced by ₹${savings.toLocaleString('en-IN')}.` : `Unlocks ₹${Math.abs(diff).toLocaleString('en-IN')} buffer for premium experiences.`,
+        `Projected Trip Health Score shifts from ${healthBefore.overallScore} to ${projectedHealth}/100.`,
+        `Transit duration: ${projectedTravelHours}h across ${tripContext.days} days.`
       ],
       suggestedAction: {
         type: 'budget_cut',
-        label: isReduction ? `Optimize Trip to ₹${target.toLocaleString()}` : `Apply ₹${target.toLocaleString()} Luxury Tier`,
-        description: `Recalculate all stays and activities to match ₹${target.toLocaleString()} ceiling.`,
-        estimatedSavings: isReduction ? Math.abs(diff) : 0,
-        healthScoreDelta: projectedHealth - healthBefore.overallScore
+        label: isReduction ? `Apply ₹${target.toLocaleString('en-IN')} Budget Optimization` : `Apply ₹${target.toLocaleString('en-IN')} Budget Ceiling`,
+        description: opt.summary,
+        estimatedSavings: savings,
+        healthScoreBefore: healthBefore.overallScore,
+        healthScoreAfter: projectedHealth,
+        healthScoreDelta: projectedHealth - healthBefore.overallScore,
+        travelTimeSavedMins: Math.round(opt.travelTimeSavedHours * 60),
+        optimizationResult: opt
       }
     };
   }
 
   if (scenarioType === 'remove_day') {
     const dayToRemove = parameters.dayToRemove || 2;
-    const projectedDays = Math.max(1, tripContext.days - 1);
-    const projectedHealth = Math.min(94, healthBefore.overallScore + 3);
+    const condensedItinerary = (tripContext.itinerary || [])
+      .filter(d => d.dayNumber !== dayToRemove)
+      .map((d, idx) => ({ ...d, dayNumber: idx + 1 }));
+
+    const projectedDays = Math.max(1, (tripContext.days || 3) - 1);
+    const condensedTrip: TripContext = {
+      ...tripContext,
+      days: projectedDays,
+      itinerary: condensedItinerary
+    };
+
+    const costAfter = calculateTripCost(condensedTrip);
+    const routeAfter = calculateTripRouteMetrics(condensedTrip);
+    const healthAfter = calculateDynamicHealthScore(condensedTrip);
+
+    const savedMoney = Math.max(0, costBefore.totalCost - costAfter.totalCost);
+    const savedHours = Math.max(0, Math.round((baselineTravelHours - routeAfter.totalTravelHours) * 10) / 10);
+    const projectedActivities = condensedItinerary.reduce((acc, d) => acc + (d.activities?.length || 0), 0);
 
     return {
       scenarioTitle: `What-if Day 0${dayToRemove} is Removed`,
-      narrative: `Compressing trip to ${projectedDays} days eliminates hotel night expenses and condenses the highlights.`,
+      narrative: `Compressing trip to ${projectedDays} days eliminates Day 0${dayToRemove} activities and corresponding lodging.`,
       currentState: {
         totalBudget: currentBudget,
         healthScore: healthBefore.overallScore,
@@ -65,33 +93,57 @@ export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenar
         activityCount: totalActivities
       },
       projectedState: {
-        totalBudget: Math.round(currentBudget * 0.78),
-        healthScore: projectedHealth,
-        travelTimeHours: Math.round(baselineTravelHours * 0.75 * 10) / 10,
-        activityCount: Math.round(totalActivities * 0.75)
+        totalBudget: costAfter.totalCost,
+        healthScore: healthAfter.overallScore,
+        travelTimeHours: routeAfter.totalTravelHours,
+        activityCount: projectedActivities
       },
       keyImpacts: [
-        `Reduces total duration from ${tripContext.days} to ${projectedDays} days.`,
-        `Saves ~₹${Math.round(currentBudget * 0.22).toLocaleString()} in hotel and daily dining.`,
-        `Reduces transit time by ~${Math.round(baselineTravelHours * 0.25 * 10) / 10} hours.`
+        `Reduces duration from ${tripContext.days} to ${projectedDays} days (${projectedActivities} stops total).`,
+        `Saves ₹${savedMoney.toLocaleString('en-IN')} in lodging and activity fees.`,
+        `Transit time reduced by ${savedHours} hours (from ${baselineTravelHours}h to ${routeAfter.totalTravelHours}h).`
       ],
       suggestedAction: {
         type: 'replan',
         label: `Apply ${projectedDays}-Day Condensed Itinerary`,
-        description: `Reorganize stops into a high-impact ${projectedDays}-day route.`,
-        estimatedSavings: Math.round(currentBudget * 0.22),
-        healthScoreDelta: projectedHealth - healthBefore.overallScore
+        description: `Removes Day 0${dayToRemove} to save ₹${savedMoney.toLocaleString('en-IN')} and cut ${savedHours}h transit.`,
+        estimatedSavings: savedMoney,
+        healthScoreBefore: healthBefore.overallScore,
+        healthScoreAfter: healthAfter.overallScore,
+        healthScoreDelta: healthAfter.overallScore - healthBefore.overallScore,
+        travelTimeSavedMins: Math.round(savedHours * 60)
       }
     };
   }
 
   if (scenarioType === 'add_traveler') {
-    const newCount = (tripContext.travelers || 2) + 1;
-    const addedCost = Math.round(currentBudget * 0.35);
+    const currentTravelers = tripContext.travelers || 2;
+    const newCount = currentTravelers + 1;
+    const ratio = newCount / currentTravelers;
+
+    // Activities and meals scale per traveler, while lodging stays fixed for shared room
+    const addedActivityCost = Math.round(costBefore.activityCost * (ratio - 1));
+    const addedFoodCost = Math.round(costBefore.foodCost * (ratio - 1));
+    const addedTotal = addedActivityCost + addedFoodCost;
+
+    const projectedTrip: TripContext = {
+      ...tripContext,
+      travelers: newCount,
+      budget: {
+        ...tripContext.budget,
+        spent: currentBudget + addedTotal,
+        food: (tripContext.budget?.food || 0) + addedFoodCost,
+        activities: (tripContext.budget?.activities || 0) + addedActivityCost
+      }
+    };
+
+    const healthAfter = calculateDynamicHealthScore(projectedTrip);
+    const perPersonBefore = Math.round(currentBudget / currentTravelers);
+    const perPersonAfter = Math.round((currentBudget + addedTotal) / newCount);
 
     return {
       scenarioTitle: `What-if Traveler Count increases to ${newCount}`,
-      narrative: `Adding a traveler increases group split efficiency for cabs and villas while adding individual meal and attraction costs.`,
+      narrative: `Adding a traveler increases group split efficiency for cabs and lodging while adding individual meal and activity costs.`,
       currentState: {
         totalBudget: currentBudget,
         healthScore: healthBefore.overallScore,
@@ -99,33 +151,38 @@ export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenar
         activityCount: totalActivities
       },
       projectedState: {
-        totalBudget: currentBudget + addedCost,
-        healthScore: healthBefore.overallScore,
+        totalBudget: currentBudget + addedTotal,
+        healthScore: healthAfter.overallScore,
         travelTimeHours: baselineTravelHours,
         activityCount: totalActivities
       },
       keyImpacts: [
-        `Per-person cost drops due to shared cab rides and split suite lodging.`,
-        `Group size increases from ${tripContext.travelers} to ${newCount} travelers.`,
-        `Total combined budget increases by ~₹${addedCost.toLocaleString()}.`
+        `Per-person cost shifts from ₹${perPersonBefore.toLocaleString('en-IN')} to ₹${perPersonAfter.toLocaleString('en-IN')}.`,
+        `Group size increases from ${currentTravelers} to ${newCount} travelers.`,
+        `Combined estimated budget increases by ₹${addedTotal.toLocaleString('en-IN')}.`
       ],
       suggestedAction: {
         type: 'optimization',
         label: `Recalculate for ${newCount} Travelers`,
-        description: `Apply group split math and update booking reservations.`,
+        description: `Apply group split calculations for ${newCount} people.`,
         estimatedSavings: 0,
-        healthScoreDelta: 0
+        healthScoreBefore: healthBefore.overallScore,
+        healthScoreAfter: healthAfter.overallScore,
+        healthScoreDelta: healthAfter.overallScore - healthBefore.overallScore,
+        travelTimeSavedMins: 0
       }
     };
   }
 
   // Default pace change scenario
   const targetPace = parameters.targetPace || 'relaxed';
+  const opt = optimizeTripItinerary(tripContext, 0.15, { targetPace });
+
   return {
     scenarioTitle: `What-if Trip Pace is set to '${targetPace}'`,
     narrative: targetPace === 'relaxed'
-      ? 'A relaxed pace limits each day to maximum 3 curated stops with 2-hour leisurely breaks.'
-      : 'A packed pace maximizes sightseeing with 5+ stops per day, covering all top attractions.',
+      ? 'A relaxed pace limits each day to maximum 3 curated stops with comfortable afternoon relaxation buffers.'
+      : 'A packed pace maximizes sightseeing with 4+ stops per day, covering top attractions.',
     currentState: {
       totalBudget: currentBudget,
       healthScore: healthBefore.overallScore,
@@ -133,21 +190,25 @@ export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenar
       activityCount: totalActivities
     },
     projectedState: {
-      totalBudget: currentBudget,
-      healthScore: targetPace === 'relaxed' ? 95 : 74,
-      travelTimeHours: targetPace === 'relaxed' ? Math.round(baselineTravelHours * 0.7 * 10) / 10 : Math.round(baselineTravelHours * 1.3 * 10) / 10,
-      activityCount: targetPace === 'relaxed' ? Math.max(3, totalActivities - 2) : totalActivities + 3
+      totalBudget: opt.costAfter,
+      healthScore: opt.healthScoreAfter,
+      travelTimeHours: opt.travelTimeHoursAfter,
+      activityCount: (opt.optimizedItinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0)
     },
     keyImpacts: [
-      targetPace === 'relaxed' ? 'Health Score rises to 95/100 due to spacious rest buffers.' : 'Health score drops to 74/100 due to high transit density.',
-      targetPace === 'relaxed' ? 'Transit time drops by ~30%.' : 'Transit time increases by ~30%.'
+      `Health Score shifts from ${healthBefore.overallScore} to ${opt.healthScoreAfter}/100.`,
+      `Transit time: ${opt.travelTimeHoursAfter}h (saved ${opt.travelTimeSavedHours}h).`
     ],
     suggestedAction: {
       type: 'optimization',
       label: `Apply ${targetPace} Schedule Pacing`,
-      description: `Rebalance all itinerary slots for a ${targetPace} journey.`,
-      estimatedSavings: 0,
-      healthScoreDelta: targetPace === 'relaxed' ? 95 - healthBefore.overallScore : 74 - healthBefore.overallScore
+      description: opt.summary,
+      estimatedSavings: opt.estimatedSavings,
+      healthScoreBefore: healthBefore.overallScore,
+      healthScoreAfter: opt.healthScoreAfter,
+      healthScoreDelta: opt.healthScoreAfter - healthBefore.overallScore,
+      travelTimeSavedMins: Math.round(opt.travelTimeSavedHours * 60),
+      optimizationResult: opt
     }
   };
 }

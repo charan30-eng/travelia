@@ -1,6 +1,7 @@
 import { TripPlan, DestinationCardData, Currency, CurrencyRate } from '../types';
 import { getFlightDataForDestination } from './flightData';
 import { detectCountryFromDestination } from './currencyHelper';
+import { calculateTravelDateRange } from '../utils/dateUtils';
 
 export const CURRENCY_RATES: Record<Currency, CurrencyRate> = {
   INR: { symbol: '₹', rateFromINR: 1 },
@@ -659,7 +660,8 @@ export const generateTripFromPrompt = (
   destination: string,
   days: number = 5,
   travelers: number = 2,
-  preferences: string[] = ['Relaxation', 'Food & Culture']
+  preferences: string[] = ['Relaxation', 'Food & Culture'],
+  customDates?: string
 ): TripPlan => {
   const destLower = destination.toLowerCase();
   
@@ -757,7 +759,7 @@ export const generateTripFromPrompt = (
     days,
     nights,
     travelers,
-    travelDates: 'Upcoming 2026',
+    travelDates: customDates || calculateTravelDateRange('2026-11-12', days).formattedRange,
     preferences: preferences as any,
     hotelCategory: 'mid',
     transportType: 'cab',

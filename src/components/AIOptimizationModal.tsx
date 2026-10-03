@@ -135,7 +135,9 @@ export const AIOptimizationModal: React.FC<AIOptimizationModalProps> = ({
                 </span>
               </div>
               <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
-                Saves {formatCurrency(estimatedSavings, activeCurrency)}
+                {estimatedSavings > 0
+                  ? `Saves ${formatCurrency(estimatedSavings, activeCurrency)}`
+                  : 'Budget Balanced'}
               </span>
             </div>
 
@@ -154,7 +156,9 @@ export const AIOptimizationModal: React.FC<AIOptimizationModalProps> = ({
                 </span>
               </div>
               <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
-                Saved ~{travelTimeSavedHours} hrs in road transit
+                {travelTimeSavedHours > 0 
+                  ? `Saved ~${travelTimeSavedHours} hrs${optimizationResult.travelDistanceSavedKm ? ` (${optimizationResult.travelDistanceSavedKm} km)` : ''} in road transit`
+                  : `Optimal linear route (~${travelTimeHoursAfter}h transit)`}
               </span>
             </div>
 
@@ -173,7 +177,11 @@ export const AIOptimizationModal: React.FC<AIOptimizationModalProps> = ({
                 </span>
               </div>
               <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
-                +{healthScoreAfter - healthScoreBefore} Pts Improvement
+                {healthScoreAfter > healthScoreBefore 
+                  ? `+${healthScoreAfter - healthScoreBefore} Pts Improvement`
+                  : healthScoreAfter === healthScoreBefore
+                  ? `Maintained ${healthScoreAfter}/100 Balance`
+                  : `${healthScoreAfter - healthScoreBefore} Pts Adjustment`}
               </span>
             </div>
 
@@ -260,6 +268,24 @@ export const AIOptimizationModal: React.FC<AIOptimizationModalProps> = ({
                   <li key={i} className="flex items-start gap-2">
                     <span className="text-emerald-600 font-bold">•</span>
                     <span>{exp}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* WARNINGS / ADVISORIES */}
+          {optimizationResult.warnings && optimizationResult.warnings.length > 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
+              <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                Feasibility & Budget Advisory:
+              </span>
+              <ul className="space-y-1.5 text-xs text-amber-800">
+                {optimizationResult.warnings.map((w, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-amber-600 font-bold">•</span>
+                    <span>{w}</span>
                   </li>
                 ))}
               </ul>

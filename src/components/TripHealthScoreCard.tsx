@@ -39,7 +39,6 @@ export const TripHealthScoreCard: React.FC<TripHealthScoreCardProps> = ({
     onApplyImprovement(imp);
     setHealthData(prev => ({
       ...prev,
-      overallScore: Math.min(100, prev.overallScore + 3),
       improvements: prev.improvements.map(i => i.id === imp.id ? { ...i, applied: true } : i)
     }));
 

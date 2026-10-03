@@ -116,6 +116,9 @@ export interface OptimizationResult {
   travelTimeHoursBefore: number;
   travelTimeHoursAfter: number;
   travelTimeSavedHours: number;
+  travelDistanceKmBefore?: number;
+  travelDistanceKmAfter?: number;
+  travelDistanceSavedKm?: number;
   resolvedConflictsCount: number;
   changes: ActivityChange[];
   explanations: string[];

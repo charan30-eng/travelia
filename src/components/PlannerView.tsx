@@ -16,9 +16,16 @@ import {
   Compass
 } from 'lucide-react';
 import { TripPreference, TripPlan } from '../types';
+import { calculateTravelDateRange } from '../utils/dateUtils';
 
 interface PlannerViewProps {
-  onGenerateTrip: (destination: string, days: number, travelers: number, preferences: TripPreference[]) => void;
+  onGenerateTrip: (
+    destination: string, 
+    days: number, 
+    travelers: number, 
+    preferences: TripPreference[],
+    customDates?: string
+  ) => void;
   initialDestination?: string;
   isGenerating?: boolean;
 }
@@ -51,9 +58,16 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   isGenerating = false,
 }) => {
   const [destination, setDestination] = useState(initialDestination || '');
-  const [dates, setDates] = useState('Nov 12 - Nov 16, 2026');
+  const [startDate, setStartDate] = useState<string>('2026-11-12');
   const [days, setDays] = useState(5);
   const [travelers, setTravelers] = useState(2);
+
+  // Dynamic travel dates recalculation based on start date and days
+  const dateRangeInfo = React.useMemo(() => {
+    return calculateTravelDateRange(startDate, days);
+  }, [startDate, days]);
+
+  const dates = dateRangeInfo.formattedRange;
 
   // Sync destination state if initialDestination changes
   React.useEffect(() => {
@@ -109,7 +123,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!destination.trim()) return;
-    onGenerateTrip(destination, days, travelers, selectedPreferences);
+    onGenerateTrip(destination, days, travelers, selectedPreferences, dates);
   };
 
   return (
@@ -198,9 +212,27 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                   <div className="flex items-center justify-between text-xs font-bold text-[#191919]">
                     <span className="flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-[#344E27]" />
-                      <span>{days} Days ({days - 1} Nights)</span>
+                      <span>{days} Days ({days - 1} {days - 1 === 1 ? 'Night' : 'Nights'})</span>
                     </span>
-                    <span className="text-neutral-500 font-normal text-[11px]">{dates}</span>
+                    
+                    {/* Interactive Departure & Return Dates */}
+                    <div className="relative group inline-flex items-center" title="Click to change departure start date">
+                      <input
+                        type="date"
+                        id="planner-start-date"
+                        aria-label="Change trip start date"
+                        value={startDate}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setStartDate(e.target.value);
+                          }
+                        }}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                      />
+                      <span className="text-neutral-500 group-hover:text-[#344E27] font-normal text-[11px] underline decoration-dotted underline-offset-2 transition-colors cursor-pointer select-none">
+                        {dates}
+                      </span>
+                    </div>
                   </div>
                   
                   {/* Duration Slider */}
@@ -211,11 +243,44 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                     value={days}
                     onChange={(e) => setDays(Number(e.target.value))}
                     className="w-full accent-[#344E27] cursor-pointer"
+                    aria-label="Trip duration in days"
                   />
-                  <div className="flex justify-between text-[10px] text-neutral-400 font-medium">
-                    <span>Weekend (2d)</span>
-                    <span>5 Days (Ideal)</span>
-                    <span>2 Weeks (14d)</span>
+                  
+                  {/* Quick Preset Buttons */}
+                  <div className="flex justify-between text-[10px] font-medium pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setDays(2)}
+                      className={`px-2 py-0.5 rounded-full transition-all cursor-pointer ${
+                        days === 2
+                          ? 'bg-[#344E27] text-white font-bold shadow-xs'
+                          : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/50'
+                      }`}
+                    >
+                      Weekend (2d)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDays(5)}
+                      className={`px-2 py-0.5 rounded-full transition-all cursor-pointer ${
+                        days === 5
+                          ? 'bg-[#344E27] text-white font-bold shadow-xs'
+                          : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/50'
+                      }`}
+                    >
+                      5 Days (Ideal)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDays(14)}
+                      className={`px-2 py-0.5 rounded-full transition-all cursor-pointer ${
+                        days === 14
+                          ? 'bg-[#344E27] text-white font-bold shadow-xs'
+                          : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/50'
+                      }`}
+                    >
+                      2 Weeks (14d)
+                    </button>
                   </div>
                 </div>
               </div>

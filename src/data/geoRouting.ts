@@ -228,29 +228,42 @@ export const resolveCityProfile = (destination: string): CityGeoProfile => {
 };
 
 // Generate geographically consistent waypoints for a day
+// Generate geographically consistent waypoints for a day
 export const buildDayWaypoints = (
-  trip: TripPlan,
+  trip: TripPlan | any,
   dayNumber: number = 1
 ): RouteWaypoint[] => {
-  const profile = resolveCityProfile(trip.destination);
-  const day = trip.itinerary.find(d => d.dayNumber === dayNumber) || trip.itinerary[0];
-  const hotel = trip.hotels.find(h => h.selected) || trip.hotels[0] || {
-    name: `${trip.destination.split(',')[0]} Grand Heritage Stay`,
-    location: `Central ${trip.destination.split(',')[0]}`
-  };
+  const destination = trip?.destination || 'Destination';
+  const profile = resolveCityProfile(destination);
+  const day = trip?.itinerary?.find((d: any) => d.dayNumber === dayNumber) || trip?.itinerary?.[0];
+  
+  let hotelName = `${destination.split(',')[0]} Grand Heritage Stay`;
+  let hotelLocation = `Central ${destination.split(',')[0]}`;
 
-  const hotelCoords: [number, number] = profile.landmarks[0]
-    ? profile.landmarks[0].coords
-    : profile.center;
+  if (Array.isArray(trip?.hotels) && trip.hotels.length > 0) {
+    const selected = trip.hotels.find((h: any) => h.selected) || trip.hotels[0];
+    if (selected) {
+      hotelName = selected.name;
+      hotelLocation = selected.location;
+    }
+  } else if (trip?.existingBookings?.hotel) {
+    hotelName = trip.existingBookings.hotel;
+    hotelLocation = `${destination.split(',')[0]} Hotel Quarter`;
+  }
+
+  const hotelLandmark = profile.landmarks.find(l => 
+    l.name.toLowerCase().includes('hotel') || l.name.toLowerCase().includes('stay') || l.name.toLowerCase().includes('resort')
+  );
+  const hotelCoords: [number, number] = hotelLandmark ? hotelLandmark.coords : profile.center;
 
   const waypoints: RouteWaypoint[] = [];
 
   // 1. Starting Hotel Stop
   waypoints.push({
     id: 'wp-hotel-start',
-    title: hotel.name,
+    title: hotelName,
     category: 'hotel',
-    location: hotel.location,
+    location: hotelLocation,
     coords: hotelCoords,
     time: '08:30 AM',
     stopNumber: 1,
@@ -259,13 +272,26 @@ export const buildDayWaypoints = (
 
   // 2. Activities
   const activities = day?.activities || [];
-  activities.forEach((act, idx) => {
-    // Pick or compute coordinate
+  activities.forEach((act: any, idx: number) => {
+    // Pick or compute coordinate based on destination landmarks
     let coords: [number, number];
-    if (idx < profile.landmarks.length - 1) {
+    const actNameLower = (act.activity || '').toLowerCase();
+    const actLocLower = (act.location || '').toLowerCase();
+
+    const matchedLandmark = profile.landmarks.find(l => {
+      const lLower = l.name.toLowerCase();
+      return (
+        (actLocLower && (lLower.includes(actLocLower) || actLocLower.includes(lLower))) ||
+        (actNameLower && (lLower.includes(actNameLower) || actNameLower.includes(lLower.split(' ')[0])))
+      );
+    });
+
+    if (matchedLandmark) {
+      coords = matchedLandmark.coords;
+    } else if (idx < profile.landmarks.length - 1) {
       coords = profile.landmarks[idx + 1].coords;
     } else {
-      // Small geometric offset
+      // Deterministic geometric offset
       const angle = (idx * 1.35);
       const radius = 0.025 + ((idx % 3) * 0.015);
       coords = [
@@ -295,9 +321,9 @@ export const buildDayWaypoints = (
   // 3. Return Hotel Stop
   waypoints.push({
     id: 'wp-hotel-return',
-    title: `Return to ${hotel.name}`,
+    title: `Return to ${hotelName}`,
     category: 'hotel',
-    location: hotel.location,
+    location: hotelLocation,
     coords: hotelCoords,
     time: '09:45 PM',
     stopNumber: waypoints.length + 1,
@@ -359,6 +385,72 @@ export const buildRouteSegments = (
   return segments;
 };
 
+// Calculate real route transit metrics for a sequence of waypoints
+export const calculateDayRouteMetrics = (
+  waypoints: RouteWaypoint[],
+  mode: TransitMode = 'cab'
+): { distanceKm: number; durationMinutes: number; durationHours: number } => {
+  if (waypoints.length <= 1) {
+    return { distanceKm: 0, durationMinutes: 0, durationHours: 0 };
+  }
+  const modeConfig = TRANSIT_MODES[mode] || TRANSIT_MODES.cab;
+  let totalDist = 0;
+  let totalMins = 0;
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const dist = calculateHaversineDistance(waypoints[i].coords, waypoints[i + 1].coords);
+    totalDist += dist;
+    const travelHours = dist / modeConfig.speedKmH;
+    const durMinutes = Math.max(3, Math.round(travelHours * 60 + modeConfig.fixedWaitMinutes));
+    totalMins += durMinutes;
+  }
+
+  const distanceKm = Math.round(totalDist * 10) / 10;
+  const durationHours = Math.round((totalMins / 60) * 10) / 10;
+
+  return { distanceKm, durationMinutes: totalMins, durationHours };
+};
+
+export interface DayRouteMetricsItem {
+  dayNumber: number;
+  distanceKm: number;
+  durationMinutes: number;
+  durationHours: number;
+}
+
+export interface TripRouteMetrics {
+  totalDistanceKm: number;
+  totalTravelHours: number;
+  totalTravelMinutes: number;
+  days: DayRouteMetricsItem[];
+}
+
+// Calculate factual, deterministic travel route metrics for an entire trip itinerary
+export const calculateTripRouteMetrics = (
+  trip: TripPlan | any,
+  mode: TransitMode = 'cab'
+): TripRouteMetrics => {
+  const days: DayRouteMetricsItem[] = (trip?.itinerary || []).map((day: any) => {
+    const waypoints = buildDayWaypoints(trip, day.dayNumber);
+    const dayMetrics = calculateDayRouteMetrics(waypoints, mode);
+    return {
+      dayNumber: day.dayNumber,
+      ...dayMetrics
+    };
+  });
+
+  const totalDistanceKm = Math.round(days.reduce((acc, d) => acc + d.distanceKm, 0) * 10) / 10;
+  const totalTravelMinutes = days.reduce((acc, d) => acc + d.durationMinutes, 0);
+  const totalTravelHours = Math.round((totalTravelMinutes / 60) * 10) / 10;
+
+  return {
+    totalDistanceKm,
+    totalTravelHours,
+    totalTravelMinutes,
+    days
+  };
+};
+
 // Intelligent Route Optimization (Traveling Salesperson heuristic)
 export interface OptimizedRouteResult {
   originalWaypoints: RouteWaypoint[];
@@ -384,7 +476,7 @@ export const optimizeWaypointSequence = (
       if (idx === 0) return 0;
       return acc + calculateHaversineDistance(waypoints[idx - 1].coords, wp.coords);
     }, 0);
-    const origMin = Math.round((origDist / TRANSIT_MODES[mode].speedKmH) * 60);
+    const origMin = Math.round((origDist / TRANSIT_MODES[mode].speedKmH) * 60 + (waypoints.length - 1) * TRANSIT_MODES[mode].fixedWaitMinutes);
 
     return {
       originalWaypoints: waypoints,
@@ -435,6 +527,31 @@ export const optimizeWaypointSequence = (
     currentPos = nextStop.coords;
   }
 
+  // 2-opt local search optimization to uncross any intersecting legs
+  let improved = true;
+  let iterations = 0;
+  while (improved && iterations < 30) {
+    improved = false;
+    iterations++;
+    for (let i = 0; i < orderedStops.length - 1; i++) {
+      for (let k = i + 1; k < orderedStops.length; k++) {
+        const prev = i === 0 ? startHotel.coords : orderedStops[i - 1].coords;
+        const currentI = orderedStops[i].coords;
+        const currentK = orderedStops[k].coords;
+        const next = k === orderedStops.length - 1 ? endHotel.coords : orderedStops[k + 1].coords;
+
+        const currentLegsDist = calculateHaversineDistance(prev, currentI) + calculateHaversineDistance(currentK, next);
+        const newLegsDist = calculateHaversineDistance(prev, currentK) + calculateHaversineDistance(currentI, next);
+
+        if (newLegsDist < currentLegsDist - 0.05) {
+          const sub = orderedStops.slice(i, k + 1).reverse();
+          orderedStops.splice(i, sub.length, ...sub);
+          improved = true;
+        }
+      }
+    }
+  }
+
   // Construct optimized waypoint list with re-indexed stop numbers
   const optimizedWaypoints: RouteWaypoint[] = [
     { ...startHotel, stopNumber: 1 },
@@ -449,30 +566,41 @@ export const optimizeWaypointSequence = (
   }
   optDist = Math.round(optDist * 10) / 10;
 
-  // Guarantee visible optimization benefit if stops were disorganized
-  if (optDist >= origDist) {
-    optDist = Math.max(8.5, Math.round(origDist * 0.76 * 10) / 10);
+  // Real calculations without fake minimum floors
+  if (optDist < origDist - 0.1) {
+    const optMin = Math.round((optDist / TRANSIT_MODES[mode].speedKmH) * 60 + (optimizedWaypoints.length - 1) * TRANSIT_MODES[mode].fixedWaitMinutes);
+    const distanceSaved = Math.round((origDist - optDist) * 10) / 10;
+    const minutesSaved = Math.max(0, origMin - optMin);
+    const moneySaved = Math.round(distanceSaved * TRANSIT_MODES[mode].costPerKmINR);
+    const cityName = destination.split(',')[0];
+    const formattedSavings = formatCurrency(moneySaved, currency);
+
+    return {
+      originalWaypoints: waypoints,
+      optimizedWaypoints,
+      originalDistanceKm: origDist,
+      optimizedDistanceKm: optDist,
+      originalMinutes: origMin,
+      optimizedMinutes: optMin,
+      distanceSavedKm: distanceSaved,
+      minutesSaved,
+      moneySavedINR: moneySaved,
+      savingsNarrative: `AI sequenced ${cityName} stops into a smooth circular loop: Saved ${distanceSaved} km, ${minutesSaved} mins transit & ${formattedSavings} in cab fares by eliminating backtracking!`
+    };
   }
 
-  const optMin = Math.round((optDist / TRANSIT_MODES[mode].speedKmH) * 60 + (optimizedWaypoints.length - 1) * TRANSIT_MODES[mode].fixedWaitMinutes);
-  const distanceSaved = Math.max(2.4, Math.round((origDist - optDist) * 10) / 10);
-  const minutesSaved = Math.max(14, origMin - optMin);
-  const moneySaved = Math.round(distanceSaved * TRANSIT_MODES[mode].costPerKmINR);
-
-  const cityName = destination.split(',')[0];
-  const formattedSavings = formatCurrency(moneySaved, currency);
-
+  // If optimization did not find a shorter route, honestly report 0 savings
   return {
     originalWaypoints: waypoints,
-    optimizedWaypoints,
+    optimizedWaypoints: waypoints,
     originalDistanceKm: origDist,
-    optimizedDistanceKm: optDist,
+    optimizedDistanceKm: origDist,
     originalMinutes: origMin,
-    optimizedMinutes: optMin,
-    distanceSavedKm: distanceSaved,
-    minutesSaved,
-    moneySavedINR: moneySaved,
-    savingsNarrative: `AI sequenced ${cityName} stops into a smooth circular loop: Saved ${distanceSaved} km, ${minutesSaved} mins transit & ${formattedSavings} in cab fares by eliminating backtracking!`
+    optimizedMinutes: origMin,
+    distanceSavedKm: 0,
+    minutesSaved: 0,
+    moneySavedINR: 0,
+    savingsNarrative: 'Stops are already sequenced along an optimal transit corridor with zero zigzag backtracking.'
   };
 };
 

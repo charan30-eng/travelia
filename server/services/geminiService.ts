@@ -173,7 +173,7 @@ export async function chatWithTraveliaAI(req: AIChatRequest): Promise<AIChatResp
             healthScoreBefore: replan.healthScoreBefore,
             healthScoreAfter: replan.healthScoreAfter,
             healthScoreDelta: replan.healthScoreAfter - replan.healthScoreBefore,
-            travelTimeSavedMins: Math.round((optResult.travelTimeSavedHours || 0.6) * 60),
+            travelTimeSavedMins: Math.round((optResult.travelTimeSavedHours || 0) * 60),
             optimizationResult: optResult
           };
         } else if (intent === 'what_if' || constraints.removeMostExpensive) {
@@ -206,7 +206,8 @@ export async function chatWithTraveliaAI(req: AIChatRequest): Promise<AIChatResp
             healthScoreBefore: baselineHealth.overallScore,
             healthScoreAfter: whatIf.projectedState.healthScore,
             healthScoreDelta: whatIf.projectedState.healthScore - baselineHealth.overallScore,
-            travelTimeSavedMins: 45
+            travelTimeSavedMins: whatIf.suggestedAction?.travelTimeSavedMins || 0,
+            optimizationResult: whatIf.suggestedAction?.optimizationResult
           };
         } else if (intent === 'health_score') {
           const optResult = optimizeTripItinerary(tripContext, 0.15);
@@ -328,7 +329,7 @@ function executeDeterministicFallback(
         healthScoreBefore: replan.healthScoreBefore,
         healthScoreAfter: replan.healthScoreAfter,
         healthScoreDelta: replan.healthScoreAfter - replan.healthScoreBefore,
-        travelTimeSavedMins: 40,
+        travelTimeSavedMins: Math.round((optResult.travelTimeSavedHours || 0) * 60),
         optimizationResult: optResult
       },
       suggestedFollowUps: [
@@ -453,16 +454,25 @@ function executeDeterministicFallback(
 
       const reply = `Your most expensive activity is currently '${highestActName}' (estimated ₹${highestCost.toLocaleString('en-IN')}). If you remove or substitute this with a scenic shoreline catamaran or coastal walk, your projected spend drops from ₹${(tripContext.budget?.total || 25000).toLocaleString('en-IN')} to ₹${Math.max(5000, (tripContext.budget?.total || 25000) - highestCost).toLocaleString('en-IN')} without disrupting your sightseeing route.`;
 
+      const whatIfScenario = simulateWhatIfScenario({
+        tripContext,
+        scenarioType: 'budget_change',
+        parameters: { targetBudget: Math.max(5000, (tripContext.budget?.total || 25000) - highestCost) }
+      });
+
       return {
         reply,
         intent: 'what_if',
         actionProposal: {
           type: 'budget_cut',
           label: `Simulate Removing '${highestActName}' (-₹${highestCost.toLocaleString('en-IN')})`,
-          description: `Saves ₹${highestCost.toLocaleString('en-IN')} instantly.`,
+          description: `Saves ₹${highestCost.toLocaleString('en-IN')} instantly without altering other days.`,
           estimatedSavings: highestCost,
-          healthScoreDelta: 4,
-          travelTimeSavedMins: 30
+          healthScoreBefore: baselineHealth.overallScore,
+          healthScoreAfter: whatIfScenario.projectedState.healthScore,
+          healthScoreDelta: whatIfScenario.projectedState.healthScore - baselineHealth.overallScore,
+          travelTimeSavedMins: whatIfScenario.suggestedAction?.travelTimeSavedMins || 0,
+          optimizationResult: whatIfScenario.suggestedAction?.optimizationResult
         },
         suggestedFollowUps: [
           "Apply this change",

@@ -476,28 +476,38 @@ export const calculateTripHealthScore = (trip: TripPlan): TripHealthScore => {
   const activitySpend = trip.itinerary.reduce((sum, d) => 
     sum + d.activities.reduce((dSum, a) => dSum + (a.estimatedCost || 0), 0), 0
   );
-  const hotelSpend = (trip.hotels.find(h => h.selected)?.pricePerNight || 3500) * (trip.nights || 3);
-  const estimatedCommittedCost = activitySpend + hotelSpend;
+  const hotelSpend = (trip.hotels?.find(h => h.selected)?.pricePerNight || (trip.budget.hotel ? trip.budget.hotel / (trip.nights || 3) : 3500)) * (trip.nights || 3);
+  const flightSpend = trip.budget.flights || 0;
+  const foodSpend = trip.budget.food || 0;
+  const transportSpend = trip.budget.transportation || 0;
+  const miscSpend = trip.budget.miscellaneous || 0;
+  const estimatedCommittedCost = activitySpend + hotelSpend + flightSpend + foodSpend + transportSpend + miscSpend;
   const totalBudget = trip.budget.total || 25000;
   
   let budgetScore = 90;
-  if (estimatedCommittedCost > totalBudget) {
-    const overagePercent = (estimatedCommittedCost - totalBudget) / totalBudget;
-    budgetScore = Math.max(50, Math.round(85 - overagePercent * 100));
-  } else if (estimatedCommittedCost >= totalBudget * 0.7) {
-    budgetScore = 94; // Healthy utilization with cushion
-  } else {
-    budgetScore = 84; // Under-utilized
+  if (totalBudget > 0) {
+    const ratio = estimatedCommittedCost / totalBudget;
+    if (ratio <= 0.85) {
+      budgetScore = 95;
+    } else if (ratio <= 1.0) {
+      budgetScore = 90;
+    } else if (ratio <= 1.15) {
+      budgetScore = 75;
+    } else {
+      budgetScore = 60;
+    }
   }
 
   // 2. Route Efficiency (20% weight)
   // Check for clustering vs scattered transit legs
   let routeScore = 92;
-  const hasLongDistances = trip.itinerary.some(d => d.activities.length >= 4);
+  const hasLongDistances = trip.itinerary.some(d => d.activities.length >= 5);
   if (hasLongDistances) {
-    routeScore = 82; // Crowded transit
+    routeScore = 75; // Crowded transit
+  } else if (trip.itinerary.some(d => d.activities.length >= 4)) {
+    routeScore = 84;
   } else {
-    routeScore = 91;
+    routeScore = 94;
   }
 
   // 3. Schedule Balance (20% weight)
@@ -621,15 +631,15 @@ export const calculateTripHealthScore = (trip: TripPlan): TripHealthScore => {
         id: 'imp-1',
         title: 'Insert 45-min Rest Buffer on Day 02',
         description: 'Post-lunch temperature peaks around 2:00 PM. Adding a relaxing café stop minimizes midday sun exposure.',
-        impact: '+3 Health Score pts',
+        impact: `+${Math.max(1, Math.round((95 - restScore) * 0.15))} Health Score pts`,
         applied: false,
         actionType: 'rest_time'
       },
       {
         id: 'imp-2',
         title: 'Batch Coastal Chauffeur Legs',
-        description: 'Pre-book dedicated cab for Day 03 to save ₹800 over piecemeal hailing.',
-        impact: '+2 Health Score pts',
+        description: 'Pre-book dedicated cab for Day 03 to eliminate fragmented hailing rates and minimize transit wait times.',
+        impact: `+${Math.max(1, Math.round((95 - routeScore) * 0.20))} Health Score pts`,
         applied: false,
         actionType: 'group_transit'
       },
@@ -637,7 +647,7 @@ export const calculateTripHealthScore = (trip: TripPlan): TripHealthScore => {
         id: 'imp-3',
         title: 'Pin Monsoon Rain Shelter Backup',
         description: 'Designate indoor art galleries as alternate venue for sudden showers.',
-        impact: '+2 Health Score pts',
+        impact: `+${Math.max(1, Math.round((95 - weatherScore) * 0.10))} Health Score pts`,
         applied: false,
         actionType: 'indoor_backup'
       }

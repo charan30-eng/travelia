@@ -36,7 +36,7 @@ export function formatTripForAI(trip: TripPlan): TripContext {
   }
 
   const selectedHotel = trip.hotels?.find(h => h.selected) || trip.hotels?.[0];
-  const dateParts = trip.travelDates?.split('-').map(s => s.trim()) || [];
+  const dateParts = trip.travelDates?.split(/[-–—]/).map(s => s.trim()) || [];
 
   return {
     id: trip.id,

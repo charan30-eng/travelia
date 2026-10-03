@@ -322,7 +322,7 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
                               ? `${Math.round(optResult.travelTimeSavedHours * 10) / 10}h` 
                               : proposal?.travelTimeSavedMins 
                               ? `${proposal.travelTimeSavedMins}m` 
-                              : '~45m'}
+                              : '0m'}
                           </span>
                         </div>
                       </div>
