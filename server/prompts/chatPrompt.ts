@@ -1,12 +1,16 @@
 import { TripContext, ComputedHealthScore } from '../types/ai';
+import { WeatherForecast } from '../types/weather';
+import { TraveliaPlace } from '../types/places';
 
 /**
  * Builds the comprehensive Travelia AI System Instruction
- * Embedding the active trip context, deterministic baseline metrics, and strict copilot guidelines.
+ * Embedding the active trip context, deterministic baseline metrics, verified places, and strict copilot guidelines.
  */
 export function buildChatSystemPrompt(
   trip: TripContext,
-  baselineHealth: ComputedHealthScore
+  baselineHealth: ComputedHealthScore,
+  weatherForecast?: WeatherForecast | null,
+  verifiedPlaces?: TraveliaPlace[]
 ): string {
   const currency = trip.budget?.currency || 'INR';
   const totalBudget = trip.budget?.total || 0;
@@ -20,6 +24,18 @@ export function buildChatSystemPrompt(
     return `Day ${day.dayNumber} - "${day.title}" (Theme: ${day.theme || 'General'}):\n${actList || '  (No activities scheduled)'}`;
   }).join('\n\n');
 
+  const weatherDetails = weatherForecast && weatherForecast.days && weatherForecast.days.length > 0
+    ? weatherForecast.days.map(d => 
+        `  - Day ${d.dayNumber ?? 1} (${d.date}): ${d.condition || 'Clear'}, High ${d.temperatureMaxC ?? 'N/A'}°C / Low ${d.temperatureMinC ?? 'N/A'}°C, Rain Probability: ${d.precipitationProbability ?? 0}%, Wind: ${d.windSpeedKph ?? 'N/A'} km/h [Source: ${weatherForecast.source}, Status: ${weatherForecast.availability}]`
+      ).join('\n')
+    : '  (Live weather forecast unavailable for these dates; do NOT invent weather values)';
+
+  const placesDetails = verifiedPlaces && verifiedPlaces.length > 0
+    ? verifiedPlaces.map(p => 
+        `  - ${p.name} | Category: ${p.category} | Rating: ${p.rating ?? 'N/A'} (${p.userRatingsTotal ?? 'N/A'} reviews) | Address: ${p.address || 'Central'} [Source: ${p.source}, Status: ${p.dataStatus}]`
+      ).join('\n')
+    : '  (No additional external places queried; stick to verified itinerary stops)';
+
   return `You are Travelia AI, an intelligent travel planning copilot.
 You reason over the user's REAL, active trip data in Travelia.
 
@@ -29,6 +45,13 @@ ACTIVE TRIP CONTEXT
 Destination: ${trip.destination}${trip.country ? `, ${trip.country}` : ''}
 Duration: ${trip.days} Days, ${trip.travelers} Traveler(s)
 Travel Dates: ${trip.travelDates || 'Flexible dates'}
+
+==================================================
+AUTHORITATIVE VERIFIED PLACES (Real Places Data Layer)
+==================================================
+${placesDetails}
+CRITICAL RULE: When suggesting attractions, sights, or hotels, ONLY suggest authentic places from this verified list or verified against Travelia's Places Data Layer. NEVER hallucinate place names, fake ratings, or fake coordinates.
+
 Budget Breakdown:
   - Total Declared: ${currency} ${totalBudget.toLocaleString('en-IN')}
   - Spent / Allocated: ${currency} ${spentBudget.toLocaleString('en-IN')}
@@ -52,6 +75,9 @@ REAL-TIME COMPUTED TRIP HEALTH SCORE (Deterministic Baseline):
   - Rest Time Buffer: ${baselineHealth.breakdown.restTime.score}/100 (${baselineHealth.breakdown.restTime.insight})
   - Activity Diversity: ${baselineHealth.breakdown.activityDiversity.score}/100 (${baselineHealth.breakdown.activityDiversity.insight})
   - Weather Compatibility: ${baselineHealth.breakdown.weatherCompatibility.score}/100 (${baselineHealth.breakdown.weatherCompatibility.insight})
+
+AUTHORITATIVE LIVE WEATHER FORECAST:
+${weatherDetails}
 
 CURRENT DETAILED ITINERARY:
 ${itineraryDetails}

@@ -47,6 +47,7 @@ export interface TripContext {
     hotelCategory?: string;
   };
   healthScore?: number;
+  hotels?: any[];
   itinerary: ItineraryDay[];
 }
 
@@ -181,12 +182,14 @@ export interface WeatherReplanResponse {
 
 export interface WhatIfScenarioRequest {
   tripContext: TripContext;
-  scenarioType: 'budget_change' | 'remove_day' | 'add_traveler' | 'weather_shift' | 'pace_change';
+  scenarioType: 'budget_change' | 'remove_day' | 'add_traveler' | 'weather_shift' | 'weather_rain' | 'weather_disruption' | 'pace_change';
   parameters: {
     targetBudget?: number;
     dayToRemove?: number;
     travelerCount?: number;
     weatherCondition?: string;
+    rainChancePercent?: number;
+    targetDay?: number;
     targetPace?: 'relaxed' | 'moderate' | 'packed';
     userPrompt?: string;
   };

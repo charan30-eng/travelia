@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import aiRoutes from './routes/ai';
+import routeRoutes from './routes/route';
+import weatherRoutes from './routes/weather';
+import placesRoutes from './routes/places';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,8 +18,11 @@ export const app = express();
 
 app.use(express.json());
 
-// Mount Travelia AI routes
+// Mount Travelia AI & Domain routes
 app.use('/api/ai', aiRoutes);
+app.use('/api/route', routeRoutes);
+app.use('/api/weather', weatherRoutes);
+app.use('/api/places', placesRoutes);
 
 // Root API test endpoint
 app.get('/api/health', (req, res) => {

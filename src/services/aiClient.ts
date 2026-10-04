@@ -45,8 +45,8 @@ export function formatTripForAI(trip: TripPlan): TripContext {
     days: trip.days,
     travelers: trip.travelers,
     travelDates: trip.travelDates,
-    startDate: dateParts[0] || undefined,
-    endDate: dateParts[1] || undefined,
+    startDate: trip.startDate || dateParts[0] || undefined,
+    endDate: trip.endDate || dateParts[1] || undefined,
     budget: {
       currency: 'INR',
       total: declaredBudget,
@@ -215,3 +215,31 @@ export async function simulateWhatIf(
 
   return await res.json();
 }
+
+/**
+ * Fetch authoritative weather forecast for a trip destination
+ */
+export async function fetchTripWeatherForecast(
+  destination: string,
+  startDate?: string,
+  daysCount: number = 3
+): Promise<any> {
+  const params = new URLSearchParams({
+    destination,
+    days: daysCount.toString()
+  });
+  if (startDate) params.set('startDate', startDate);
+
+  const res = await fetch(`/api/weather/forecast?${params.toString()}`);
+  if (!res.ok) {
+    return {
+      availability: 'unavailable',
+      days: [],
+      source: 'Open-Meteo',
+      fetchedAt: new Date().toISOString(),
+      message: 'Failed to fetch weather forecast from backend.'
+    };
+  }
+  return await res.json();
+}
+

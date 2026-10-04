@@ -59,13 +59,13 @@ export const SmartReplanModal: React.FC<SmartReplanModalProps> = ({
         setSuggestion({
           title: `AI Weather & Disruption Replan (${selectedDisruption})`,
           disruptionReason: res.summary || `Smart replan for Day ${selectedDay}`,
-          estimatedTimeSaved: `${Math.round(res.travelTimeSavedMinutes || 45)} mins`,
+          estimatedTimeSaved: `${Math.round(res.travelTimeSavedMinutes ?? 0)} mins`,
           budgetImpact: res.estimatedSavings ? -res.estimatedSavings : 0,
           budgetImpactFormatted: res.estimatedSavings > 0 ? `Saved ₹${res.estimatedSavings.toLocaleString('en-IN')}` : 'Budget Neutral',
           confidenceScore: Math.round((res.confidence || 0.92) * 100),
           suggestedChanges: res.changes.map((c: any) => ({
-            activityTitle: c.oldActivity || 'Activity',
-            replacementTitle: c.newActivity || c.oldActivity,
+            activityTitle: typeof c.oldActivity === 'object' ? c.oldActivity.name : (c.oldActivity || 'Activity'),
+            replacementTitle: typeof c.newActivity === 'object' ? c.newActivity.name : (c.newActivity || c.oldActivity || 'Activity'),
             reason: c.reason || 'Optimized for current weather and schedule balance',
             actionType: c.action || 'replace'
           }))

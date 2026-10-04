@@ -192,8 +192,8 @@ export const calculateHaversineDistance = (
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const straightLine = R * c;
-  // Road network factor: urban transit is ~1.28x straight line distance
-  return Math.max(0.6, Math.round(straightLine * 1.28 * 10) / 10);
+  // Pure great-circle straight-line distance; never labeled as road distance
+  return Math.round(straightLine * 100) / 100;
 };
 
 // Find matching city profile
@@ -273,31 +273,32 @@ export const buildDayWaypoints = (
   // 2. Activities
   const activities = day?.activities || [];
   activities.forEach((act: any, idx: number) => {
-    // Pick or compute coordinate based on destination landmarks
+    // 1. Check existing coordinates
     let coords: [number, number];
-    const actNameLower = (act.activity || '').toLowerCase();
-    const actLocLower = (act.location || '').toLowerCase();
-
-    const matchedLandmark = profile.landmarks.find(l => {
-      const lLower = l.name.toLowerCase();
-      return (
-        (actLocLower && (lLower.includes(actLocLower) || actLocLower.includes(lLower))) ||
-        (actNameLower && (lLower.includes(actNameLower) || actNameLower.includes(lLower.split(' ')[0])))
-      );
-    });
-
-    if (matchedLandmark) {
-      coords = matchedLandmark.coords;
-    } else if (idx < profile.landmarks.length - 1) {
-      coords = profile.landmarks[idx + 1].coords;
+    if (act.coords && Array.isArray(act.coords) && act.coords.length === 2) {
+      coords = [act.coords[0], act.coords[1]];
+    } else if (act.coords && typeof act.coords.latitude === 'number' && typeof act.coords.longitude === 'number') {
+      coords = [act.coords.latitude, act.coords.longitude];
     } else {
-      // Deterministic geometric offset
-      const angle = (idx * 1.35);
-      const radius = 0.025 + ((idx % 3) * 0.015);
-      coords = [
-        profile.center[0] + Math.sin(angle) * radius,
-        profile.center[1] + Math.cos(angle) * radius
-      ];
+      const actNameLower = (act.activity || '').toLowerCase();
+      const actLocLower = (act.location || '').toLowerCase();
+
+      const matchedLandmark = profile.landmarks.find(l => {
+        const lLower = l.name.toLowerCase();
+        return (
+          (actLocLower && (lLower.includes(actLocLower) || actLocLower.includes(lLower))) ||
+          (actNameLower && (lLower.includes(actNameLower) || actNameLower.includes(lLower.split(' ')[0])))
+        );
+      });
+
+      if (matchedLandmark) {
+        coords = matchedLandmark.coords;
+      } else if (idx < profile.landmarks.length) {
+        coords = profile.landmarks[idx].coords;
+      } else {
+        // Fallback to destination center without fabricating sinusoidal pseudo-points
+        coords = profile.center;
+      }
     }
 
     const cat = act.category === 'food' 
@@ -687,4 +688,34 @@ export function generateCurvedRoute(
   }
 
   return { allCurvedCoords, legCurves };
+}
+
+/**
+ * Connects frontend to the authoritative backend route engine.
+ * Fetches real road routing, geometry, and conflicts.
+ */
+export async function fetchAuthoritativeDayRoute(
+  dayNumber: number,
+  activities: any[],
+  destination: string,
+  mode: string = 'driving'
+): Promise<any> {
+  try {
+    const res = await fetch('/api/route/day', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dayNumber,
+        activities,
+        destination,
+        mode
+      })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    // Graceful offline fallback
+  }
+  return null;
 }

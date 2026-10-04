@@ -435,34 +435,21 @@ export const generateSmartPackingList = (trip: TripPlan): PackingItem[] => {
 };
 
 export const generateWeatherForecast = (trip: TripPlan): WeatherForecastDay[] => {
-  const conditions: Array<WeatherForecastDay['condition']> = [
-    'Sunny',
-    'Clear Coastal',
-    'Partly Cloudy',
-    'Afternoon Showers',
-    'Tropical Breeze',
-    'Sunny'
-  ];
-
   return Array.from({ length: trip.days }, (_, i) => {
     const dayNum = i + 1;
-    const cond = conditions[i % conditions.length];
-    const isRain = cond === 'Afternoon Showers' || cond === 'Rainy';
-
     return {
       dayNumber: dayNum,
       dateStr: `Day 0${dayNum}`,
-      condition: cond,
-      tempMaxC: 31 - (i % 3),
-      tempMinC: 24 - (i % 2),
-      humidityPercent: 68 + (i * 3),
-      rainChancePercent: isRain ? 65 : 15 + (i * 5),
-      uvIndex: isRain ? 4 : 8,
-      aiAdvisory: isRain
-        ? 'Brief afternoon drizzle expected around 3:30 PM. Great window for indoor museums or covered veranda dining.'
-        : 'Pleasant clear skies with golden evening lighting. Prime conditions for fort photography and sunset walks.',
-      recommendedTime: isRain ? 'Indoor: 2:00 PM - 5:00 PM' : 'Outdoor: 08:30 AM & 04:30 PM',
-      isRainAlert: isRain
+      condition: 'Forecast Pending',
+      tempMaxC: 28,
+      tempMinC: 22,
+      humidityPercent: null,
+      rainChancePercent: 0,
+      uvIndex: null,
+      aiAdvisory: 'Live meteorological forecast is fetched from the authoritative backend weather service.',
+      recommendedTime: 'Outdoor: Full Day Feasible',
+      isRainAlert: false,
+      dataState: 'unavailable'
     };
   });
 };

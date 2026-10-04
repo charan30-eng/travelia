@@ -54,9 +54,8 @@ import { TravelSafetySection } from './TravelSafetySection';
 import { EstimatedBudgetSection } from './EstimatedBudgetSection';
 import { TripFlightsSection } from './TripFlightsSection';
 import { TripHealthScoreCard } from './TripHealthScoreCard';
-import { WeatherWidgetStrip } from './WeatherWidgetStrip';
-import { PackingAssistantSection } from './PackingAssistantSection';
 import confetti from 'canvas-confetti';
+import { calculateTravelDateRange, calculateTripDayDate, getTodayISO, isWithinWeatherForecastWindow } from '../utils/dateUtils';
 
 interface TripDashboardViewProps {
   trip: TripPlan;
@@ -80,6 +79,7 @@ interface TripDashboardViewProps {
   includeFlights?: boolean;
   onToggleIncludeFlights?: (include: boolean) => void;
   onUpdateBudget?: (newBudget: BudgetBreakdown, controls?: Partial<TripPlan>) => void;
+  onUpdateTripDates?: (newStartDate: string, newDays?: number) => void;
 }
 
 export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
@@ -104,11 +104,28 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
   includeFlights = true,
   onToggleIncludeFlights,
   onUpdateBudget,
+  onUpdateTripDates,
 }) => {
   const [activeDay, setActiveDay] = useState<number>(1);
   const [justSaved, setJustSaved] = useState(isSaved);
   const [isSmartReplanOpen, setIsSmartReplanOpen] = useState(false);
   const [replanPresetDisruption, setReplanPresetDisruption] = useState<string | undefined>(undefined);
+  const [isDatePickerModalOpen, setIsDatePickerModalOpen] = useState(false);
+  const [editStartDate, setEditStartDate] = useState(trip.startDate || getTodayISO());
+  const [editDays, setEditDays] = useState(trip.days || 5);
+
+  React.useEffect(() => {
+    if (trip.startDate) setEditStartDate(trip.startDate);
+    if (trip.days) setEditDays(trip.days);
+  }, [trip.startDate, trip.days]);
+
+  const previewDateRange = useMemo(() => {
+    return calculateTravelDateRange(editStartDate, editDays);
+  }, [editStartDate, editDays]);
+
+  const isPreviewWeatherLive = useMemo(() => {
+    return isWithinWeatherForecastWindow(editStartDate);
+  }, [editStartDate]);
 
   // Dynamic flight package matching trip destination (Korea, Japan, Paris, Goa, etc.)
   const flightData = useMemo(() => {
@@ -392,10 +409,17 @@ END:VCALENDAR`;
               <span>AI Verified Travel Plan</span>
             </div>
             
-            <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold text-white border border-white/20">
-              <Calendar className="w-3.5 h-3.5" />
+            {/* Interactive Travel Dates Badge */}
+            <button
+              id="hero-change-dates-btn"
+              onClick={() => setIsDatePickerModalOpen(true)}
+              title="Click to view or edit travel dates"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md text-xs font-bold text-white border border-white/20 hover:border-white/40 transition-all cursor-pointer group"
+            >
+              <Calendar className="w-3.5 h-3.5 text-emerald-300 group-hover:scale-110 transition-transform" />
               <span>{trip.travelDates}</span>
-            </div>
+              <span className="text-[10px] text-emerald-200/90 font-medium underline decoration-dotted ml-0.5">Edit Dates</span>
+            </button>
 
             {/* Trip Status Pill Dropdown */}
             <div className="relative inline-block">
@@ -676,19 +700,6 @@ END:VCALENDAR`;
         </button>
 
         <button
-          onClick={() => scrollToSection('section-weather')}
-          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
-        >
-          <div className="w-7 h-7 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors shrink-0">
-            <Navigation className="w-3.5 h-3.5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Weather</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Forecast</span>
-          </div>
-        </button>
-
-        <button
           onClick={() => scrollToSection('section-budget')}
           className="p-3 rounded-2xl bg-white border border-[#344E27]/30 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
@@ -743,19 +754,6 @@ END:VCALENDAR`;
         </button>
 
         <button
-          onClick={() => scrollToSection('section-packing')}
-          className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
-        >
-          <div className="w-7 h-7 rounded-xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center group-hover:bg-[#344E27] group-hover:text-white transition-colors shrink-0">
-            <BadgeCheck className="w-3.5 h-3.5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Gear</span>
-            <span className="text-xs font-extrabold text-[#191919] truncate block">Packing</span>
-          </div>
-        </button>
-
-        <button
           onClick={() => scrollToSection('section-safety')}
           className="p-3 rounded-2xl bg-white border border-neutral-200 hover:border-[#344E27] transition-all flex items-center gap-2 shadow-2xs group text-left cursor-pointer"
         >
@@ -778,52 +776,53 @@ END:VCALENDAR`;
         />
       </div>
 
-      {/* FEATURE: WEATHER FORECAST & METEOROLOGICAL RADAR */}
-      <div id="section-weather">
-        <WeatherWidgetStrip
-          trip={trip}
-          activeDay={activeDay}
-          onSelectDay={(day) => setActiveDay(day)}
-          onTriggerWeatherReplan={(day) => {
-            setActiveDay(day);
-            setReplanPresetDisruption('rain');
-            setIsSmartReplanOpen(true);
-          }}
-        />
-      </div>
-
       {/* ========================================================================= */}
       {/* ITINERARY TIMELINE & ACTIVITY MASTER HUB */}
       {/* ========================================================================= */}
       <section className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
-              Day-By-Day Schedule
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
+                Day-By-Day Schedule
+              </span>
+              <span className="text-xs text-neutral-300">•</span>
+              <span className="text-xs font-semibold text-neutral-600 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-[#344E27]" />
+                {trip.travelDates}
+              </span>
+            </div>
             <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-0.5">
               Personalized Daily Itinerary
             </h2>
           </div>
 
           {/* Day Selector Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {trip.itinerary.map((day) => (
-              <button
-                key={day.dayNumber}
-                onClick={() => {
-                  setActiveDay(day.dayNumber);
-                  setActivityCategoryFilter('all');
-                }}
-                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  activeDay === day.dayNumber
-                    ? 'bg-[#344E27] text-white shadow-sm'
-                    : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
-                }`}
-              >
-                Day 0{day.dayNumber}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {trip.itinerary.map((day) => {
+              const dayDate = day.formattedDate || (trip.startDate ? calculateTripDayDate(trip.startDate, day.dayNumber).formattedDay : null);
+              return (
+                <button
+                  key={day.dayNumber}
+                  onClick={() => {
+                    setActiveDay(day.dayNumber);
+                    setActivityCategoryFilter('all');
+                  }}
+                  className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex flex-col items-center min-w-[76px] ${
+                    activeDay === day.dayNumber
+                      ? 'bg-[#344E27] text-white shadow-sm ring-2 ring-[#344E27]/30'
+                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                  }`}
+                >
+                  <span className="leading-tight">Day 0{day.dayNumber}</span>
+                  {dayDate && (
+                    <span className={`text-[10px] font-medium leading-tight mt-0.5 ${activeDay === day.dayNumber ? 'text-emerald-200' : 'text-neutral-400'}`}>
+                      {dayDate}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -838,10 +837,16 @@ END:VCALENDAR`;
               {/* Day Header with Live Progress */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-neutral-100 gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#E5ECE0] text-[#344E27]">
                       DAY 0{day.dayNumber}
                     </span>
+                    {(day.formattedDate || (trip.startDate && calculateTripDayDate(trip.startDate, day.dayNumber).formattedFull)) && (
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-700 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-[#344E27]" />
+                        <span>{day.formattedDate ? `${day.formattedDate}, ${trip.startDate?.slice(0, 4) || '2026'}` : calculateTripDayDate(trip.startDate, day.dayNumber).formattedFull}</span>
+                      </span>
+                    )}
                     <span className="text-xs font-semibold text-neutral-500">
                       {dayCompletedCount} of {dayTotalCount} Activities Completed
                     </span>
@@ -1108,8 +1113,19 @@ END:VCALENDAR`;
                   className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                   referrerPolicy="no-referrer"
                 />
-                <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-[#344E27] uppercase">
-                  {hotel.category} Tier
+                <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                  <div className="bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-[#344E27] uppercase">
+                    {hotel.category || 'Standard'} Tier
+                  </div>
+                  {hotel.source === 'google' ? (
+                    <div className="bg-emerald-950/85 backdrop-blur-md border border-emerald-400/30 px-2 py-0.5 rounded-full text-[9px] font-bold text-emerald-200">
+                      ● Live Google
+                    </div>
+                  ) : (
+                    <div className="bg-amber-950/85 backdrop-blur-md border border-amber-400/30 px-2 py-0.5 rounded-full text-[9px] font-bold text-amber-200">
+                      ◉ Demo Stay
+                    </div>
+                  )}
                 </div>
                 <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
                   <Star className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
@@ -1225,8 +1241,19 @@ END:VCALENDAR`;
                   className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                   referrerPolicy="no-referrer"
                 />
-                <div className="absolute top-2.5 left-2.5 bg-[#344E27]/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-white uppercase">
-                  {place.category}
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                  <div className="bg-[#344E27]/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-white uppercase">
+                    {place.category}
+                  </div>
+                  {place.source === 'google' ? (
+                    <div className="bg-emerald-950/85 backdrop-blur-md border border-emerald-400/30 px-2 py-0.5 rounded-full text-[9px] font-bold text-emerald-200">
+                      ● Live Google
+                    </div>
+                  ) : (
+                    <div className="bg-amber-950/85 backdrop-blur-md border border-amber-400/30 px-2 py-0.5 rounded-full text-[9px] font-bold text-amber-200">
+                      ◉ Demo Place
+                    </div>
+                  )}
                 </div>
                 <div className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
                   <Star className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
@@ -1389,12 +1416,7 @@ END:VCALENDAR`;
         </div>
       </section>
 
-      {/* FEATURE 5: AI PACKING ASSISTANT */}
-      <div id="section-packing">
-        <PackingAssistantSection trip={trip} />
-      </div>
-
-      {/* FEATURE 6: TRAVEL SAFETY & LOCAL GUIDANCE */}
+      {/* FEATURE: TRAVEL SAFETY & LOCAL GUIDANCE */}
       <div id="section-safety">
         <TravelSafetySection destination={trip.destination} />
       </div>
@@ -1610,6 +1632,156 @@ END:VCALENDAR`;
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* CHANGE TRAVEL DATES & DURATION MODAL */}
+      {isDatePickerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-neutral-200 space-y-6 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-neutral-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-extrabold text-xl text-[#191919]">
+                    Change Travel Dates
+                  </h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Modifying dates dynamically reschedules the itinerary, accommodation & live weather.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDatePickerModalOpen(false)}
+                className="p-2 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Inputs */}
+            <div className="space-y-5">
+              {/* Departure Date Input */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#191919] mb-2 flex items-center justify-between">
+                  <span>Departure Start Date</span>
+                  {isPreviewWeatherLive ? (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      🟢 Live Weather Active (≤16d)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
+                      📅 Seasonal Climate Model
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="date"
+                  id="dashboard-edit-start-date"
+                  min={getTodayISO()}
+                  value={editStartDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setEditStartDate(e.target.value);
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 text-sm font-bold text-neutral-800 bg-neutral-50 hover:bg-neutral-100/70 focus:bg-white rounded-2xl border border-neutral-300 focus:border-[#344E27] focus:ring-2 focus:ring-[#344E27]/20 outline-none transition-all cursor-pointer"
+                />
+              </div>
+
+              {/* Duration Slider */}
+              <div>
+                <div className="flex items-center justify-between text-xs font-bold text-[#191919] mb-2">
+                  <span>Trip Duration: {editDays} Days</span>
+                  <span className="text-neutral-500 font-medium">({previewDateRange.nights} Nights)</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="14"
+                  value={editDays}
+                  onChange={(e) => setEditDays(Number(e.target.value))}
+                  className="w-full accent-[#344E27] cursor-pointer"
+                  aria-label="Trip duration slider"
+                />
+                
+                {/* Duration Presets */}
+                <div className="flex justify-between text-[11px] font-medium pt-2">
+                  {[
+                    { label: 'Weekend (2d)', val: 2 },
+                    { label: '5 Days (Ideal)', val: 5 },
+                    { label: '1 Week (7d)', val: 7 },
+                    { label: '2 Weeks (14d)', val: 14 }
+                  ].map((preset) => (
+                    <button
+                      key={preset.val}
+                      type="button"
+                      onClick={() => setEditDays(preset.val)}
+                      className={`px-2.5 py-1 rounded-full transition-all cursor-pointer ${
+                        editDays === preset.val
+                          ? 'bg-[#344E27] text-white font-bold shadow-xs'
+                          : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Real-time Preview Box */}
+              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 space-y-2.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                  Calculated Travel Window Preview
+                </span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] text-neutral-500">Departure</span>
+                    <p className="text-sm font-extrabold text-[#191919]">{previewDateRange.startDateFormatted}</p>
+                  </div>
+                  <span className="text-neutral-300 font-light text-xl">→</span>
+                  <div className="text-right">
+                    <span className="text-[11px] text-neutral-500">Return</span>
+                    <p className="text-sm font-extrabold text-[#191919]">{previewDateRange.endDateFormatted}</p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-neutral-200/60 flex items-center justify-between text-xs font-semibold text-[#344E27]">
+                  <span>Total Schedule:</span>
+                  <span>{previewDateRange.formattedRange} ({editDays} Days)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setIsDatePickerModalOpen(false)}
+                className="px-4 py-2.5 rounded-full text-xs font-bold text-neutral-600 hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="apply-travel-dates-btn"
+                onClick={() => {
+                  if (onUpdateTripDates) {
+                    onUpdateTripDates(editStartDate, editDays);
+                  }
+                  setIsDatePickerModalOpen(false);
+                  showToast(`Travel dates updated to: ${previewDateRange.formattedRange}!`);
+                }}
+                className="px-6 py-2.5 rounded-full bg-[#344E27] hover:bg-[#2b4120] text-white text-xs font-bold shadow-md shadow-[#344E27]/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Apply Travel Dates</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

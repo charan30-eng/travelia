@@ -2,10 +2,9 @@ import { TripContext, OptimizationResult, ActivityChange } from '../types/ai';
 import { calculateDynamicHealthScore } from './healthScoreService';
 import { calculateTripCost } from './tripCostService';
 import { 
-  calculateTripRouteMetrics, 
-  optimizeWaypointSequence, 
-  buildDayWaypoints 
-} from '../../src/data/geoRouting';
+  calculateSyncTripRouteMetrics, 
+  optimizeDayRouteSync 
+} from './routeIntelligenceService';
 import { ItineraryDay, ItineraryActivity } from '../../src/types';
 import { findVerifiedAlternativeActivity } from './activityCatalogService';
 
@@ -33,8 +32,22 @@ export function optimizeTripItinerary(
 ): OptimizationResult {
   // 1. Calculate baseline factual metrics
   const costBeforeBreakdown = calculateTripCost(trip);
-  const routeBefore = calculateTripRouteMetrics(trip);
-  const healthBefore = calculateDynamicHealthScore(trip);
+  const routeBefore = calculateSyncTripRouteMetrics({
+    destination: trip.destination,
+    itinerary: (trip.itinerary || []).map(d => ({
+      dayNumber: d.dayNumber,
+      activities: (d.activities || []).map(a => ({
+        id: a.id,
+        name: a.activity,
+        location: a.location,
+        time: a.time,
+        durationMinutes: a.durationMinutes,
+        category: a.category
+      }))
+    })),
+    hotels: trip.hotels
+  });
+  const healthBefore = calculateDynamicHealthScore(trip, routeBefore);
 
   const initialTotalCost = costBeforeBreakdown.totalCost;
   const baselineTravelHours = routeBefore.totalTravelHours;
@@ -59,38 +72,46 @@ export function optimizeTripItinerary(
   // Deep clone itinerary to build optimized version
   const optimizedItinerary: ItineraryDay[] = JSON.parse(JSON.stringify(trip.itinerary || []));
 
-  // 3. Geographic Route Optimization (Traveling Salesperson / Nearest Neighbor & 2-Opt)
+  // 3. Geographic Route Optimization (Authoritative TSP / 2-Opt)
   // Reorder daily stops if intermediate backtracking is detected
   optimizedItinerary.forEach(day => {
     if (day.activities && day.activities.length >= 3) {
-      const waypoints = buildDayWaypoints({ destination: trip.destination, itinerary: [day] }, day.dayNumber);
-      const optRoute = optimizeWaypointSequence(waypoints, trip.destination);
+      const actInputs = day.activities.map(a => ({
+        id: a.id,
+        name: a.activity,
+        location: a.location,
+        time: a.time,
+        durationMinutes: a.durationMinutes,
+        category: a.category
+      }));
 
-      if (optRoute.distanceSavedKm > 0.5) {
-        // Reorder activities to match the optimized intermediate waypoints
-        const intermediateTitles = optRoute.optimizedWaypoints.slice(1, -1).map(w => w.title.toLowerCase());
-        const reorderedActivities: ItineraryActivity[] = [];
-        
-        intermediateTitles.forEach(title => {
-          const found = day.activities.find(a => a.activity.toLowerCase() === title);
-          if (found && !reorderedActivities.includes(found)) {
-            reorderedActivities.push(found);
+      const optRoute = optimizeDayRouteSync(
+        day.dayNumber,
+        actInputs,
+        trip.destination
+      );
+
+      if (optRoute.distanceSavedKm > 0.2) {
+        // Reorder day.activities according to optRoute.reorderedActivities
+        const reorderedList: ItineraryActivity[] = [];
+        optRoute.reorderedActivities.forEach(ra => {
+          const match = day.activities.find(a => a.id === ra.id);
+          if (match && !reorderedList.includes(match)) {
+            reorderedList.push(match);
           }
         });
 
-        // Add any activities that weren't in the matched titles
+        // Add any remaining
         day.activities.forEach(a => {
-          if (!reorderedActivities.includes(a)) {
-            reorderedActivities.push(a);
+          if (!reorderedList.includes(a)) {
+            reorderedList.push(a);
           }
         });
 
-        if (reorderedActivities.length === day.activities.length) {
-          day.activities = reorderedActivities;
+        if (reorderedList.length === day.activities.length) {
+          day.activities = reorderedList;
           resolvedConflicts++;
-          explanations.push(
-            `Eliminated zigzag backtracking on Day 0${day.dayNumber}: aligned stops along a linear route corridor, saving ${optRoute.distanceSavedKm} km and ${optRoute.minutesSaved} mins in transit.`
-          );
+          explanations.push(optRoute.explanation);
         }
       }
     }
@@ -280,13 +301,31 @@ export function optimizeTripItinerary(
     itinerary: optimizedItinerary
   };
 
-  const routeAfter = calculateTripRouteMetrics(optimizedTripContext);
-  const healthAfter = calculateDynamicHealthScore(optimizedTripContext);
+  const routeAfter = calculateSyncTripRouteMetrics({
+    destination: trip.destination,
+    itinerary: (optimizedItinerary || []).map(d => ({
+      dayNumber: d.dayNumber,
+      activities: (d.activities || []).map(a => ({
+        id: a.id,
+        name: a.activity,
+        location: a.location,
+        time: a.time,
+        durationMinutes: a.durationMinutes,
+        category: a.category
+      }))
+    })),
+    hotels: trip.hotels
+  });
+  const healthAfter = calculateDynamicHealthScore(optimizedTripContext, routeAfter);
 
-  const finalTravelHours = routeAfter.totalTravelHours;
-  const finalDistanceKm = routeAfter.totalDistanceKm;
-  const travelTimeSavedHours = Math.max(0, Math.round((baselineTravelHours - finalTravelHours) * 10) / 10);
-  const travelDistanceSavedKm = Math.max(0, Math.round((baselineDistanceKm - finalDistanceKm) * 10) / 10);
+  const finalTravelHours = routeAfter.totalTravelHours ?? 0;
+  const finalDistanceKm = routeAfter.totalDistanceKm ?? 0;
+  const travelTimeSavedHours = (baselineTravelHours !== null && finalTravelHours !== null)
+    ? Math.max(0, Math.round((baselineTravelHours - finalTravelHours) * 10) / 10)
+    : 0;
+  const travelDistanceSavedKm = (baselineDistanceKm !== null && finalDistanceKm !== null)
+    ? Math.max(0, Math.round((baselineDistanceKm - finalDistanceKm) * 10) / 10)
+    : 0;
   const healthScoreAfterVal = healthAfter.overallScore;
 
   // Build factual, verified narrative
@@ -309,13 +348,13 @@ export function optimizeTripItinerary(
     costBefore: initialTotalCost,
     costAfter: finalTotalCost,
     estimatedSavings: actualSavings,
-    travelTimeHoursBefore: baselineTravelHours,
+    travelTimeHoursBefore: baselineTravelHours ?? 0,
     travelTimeHoursAfter: finalTravelHours,
     travelTimeSavedHours,
-    travelDistanceKmBefore: baselineDistanceKm,
+    travelDistanceKmBefore: baselineDistanceKm ?? 0,
     travelDistanceKmAfter: finalDistanceKm,
     travelDistanceSavedKm,
-    resolvedConflictsCount: Math.max(1, resolvedConflicts, changes.length),
+    resolvedConflictsCount: resolvedConflicts,
     changes,
     explanations,
     warnings,

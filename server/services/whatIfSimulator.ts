@@ -1,14 +1,29 @@
 import { TripContext, WhatIfScenarioRequest, WhatIfScenarioResponse } from '../types/ai';
 import { calculateDynamicHealthScore } from './healthScoreService';
 import { calculateTripCost } from './tripCostService';
-import { calculateTripRouteMetrics } from '../../src/data/geoRouting';
+import { calculateSyncTripRouteMetrics } from './routeIntelligenceService';
 import { optimizeTripItinerary } from './itineraryOptimizer';
+import { replanItineraryForWeather, createWeatherOptimizationResult } from './weatherService';
 
 export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenarioResponse {
   const { tripContext, scenarioType, parameters } = req;
   const healthBefore = calculateDynamicHealthScore(tripContext);
   const costBefore = calculateTripCost(tripContext);
-  const routeBefore = calculateTripRouteMetrics(tripContext);
+  const routeBefore = calculateSyncTripRouteMetrics({
+    destination: tripContext.destination,
+    itinerary: (tripContext.itinerary || []).map(d => ({
+      dayNumber: d.dayNumber,
+      activities: (d.activities || []).map(a => ({
+        id: a.id,
+        name: a.activity,
+        location: a.location,
+        time: a.time,
+        durationMinutes: a.durationMinutes,
+        category: a.category
+      }))
+    })),
+    hotels: tripContext.hotels
+  });
 
   const totalActivities = (tripContext.itinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0);
   const baselineTravelHours = routeBefore.totalTravelHours;
@@ -76,8 +91,22 @@ export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenar
     };
 
     const costAfter = calculateTripCost(condensedTrip);
-    const routeAfter = calculateTripRouteMetrics(condensedTrip);
-    const healthAfter = calculateDynamicHealthScore(condensedTrip);
+    const routeAfter = calculateSyncTripRouteMetrics({
+      destination: condensedTrip.destination,
+      itinerary: (condensedTrip.itinerary || []).map(d => ({
+        dayNumber: d.dayNumber,
+        activities: (d.activities || []).map(a => ({
+          id: a.id,
+          name: a.activity,
+          location: a.location,
+          time: a.time,
+          durationMinutes: a.durationMinutes,
+          category: a.category
+        }))
+      })),
+      hotels: condensedTrip.hotels
+    });
+    const healthAfter = calculateDynamicHealthScore(condensedTrip, routeAfter);
 
     const savedMoney = Math.max(0, costBefore.totalCost - costAfter.totalCost);
     const savedHours = Math.max(0, Math.round((baselineTravelHours - routeAfter.totalTravelHours) * 10) / 10);
@@ -170,6 +199,64 @@ export function simulateWhatIfScenario(req: WhatIfScenarioRequest): WhatIfScenar
         healthScoreAfter: healthAfter.overallScore,
         healthScoreDelta: healthAfter.overallScore - healthBefore.overallScore,
         travelTimeSavedMins: 0
+      }
+    };
+  }
+
+  if (scenarioType === 'weather_rain' || scenarioType === 'weather_disruption') {
+    const targetDay = parameters.targetDay || 2;
+    const cond = parameters.weatherCondition || 'Rain Showers';
+    const rainChance = parameters.rainChancePercent || 85;
+
+    // Clone tripContext to preserve the original itinerary strictly without mutation
+    const clonedTrip: TripContext = JSON.parse(JSON.stringify(tripContext));
+
+    const replan = replanItineraryForWeather({
+      tripContext: clonedTrip,
+      dayNumber: targetDay,
+      condition: cond,
+      rainChancePercent: rainChance
+    });
+
+    const optResult = createWeatherOptimizationResult(clonedTrip, replan);
+    const projectedHealth = replan.healthScoreAfter;
+    const projectedCost = optResult.costAfter;
+    const projectedTravelHours = optResult.travelTimeHoursAfter;
+    const projectedActivities = (optResult.optimizedItinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0);
+
+    return {
+      scenarioTitle: `What-if Heavy Rain on Day 0${targetDay} (${rainChance}% Precipitation)`,
+      narrative: `Simulating adverse weather on Day 0${targetDay}: evaluates outdoor activity exposure and identifies verified indoor alternatives without altering your active trip plan.`,
+      currentState: {
+        totalBudget: currentBudget,
+        healthScore: healthBefore.overallScore,
+        travelTimeHours: baselineTravelHours,
+        activityCount: totalActivities
+      },
+      projectedState: {
+        totalBudget: projectedCost,
+        healthScore: projectedHealth,
+        travelTimeHours: projectedTravelHours,
+        activityCount: projectedActivities
+      },
+      keyImpacts: [
+        `${replan.affectedActivitiesCount} outdoor stop(s) protected with verified sheltered alternatives.`,
+        `Projected Trip Health Score shifts from ${healthBefore.overallScore} to ${projectedHealth}/100.`,
+        replan.estimatedSavings > 0 
+          ? `Budget impact: Saves ₹${replan.estimatedSavings.toLocaleString('en-IN')}.`
+          : `Budget impact: Neutral / within ₹${Math.abs(currentBudget - projectedCost).toLocaleString('en-IN')}.`,
+        'Active itinerary remains untouched until proposal is approved.'
+      ],
+      suggestedAction: {
+        type: 'replan',
+        label: `Apply Day 0${targetDay} Weather-Safe Replan`,
+        description: replan.summary,
+        estimatedSavings: replan.estimatedSavings || 0,
+        healthScoreBefore: healthBefore.overallScore,
+        healthScoreAfter: projectedHealth,
+        healthScoreDelta: projectedHealth - healthBefore.overallScore,
+        travelTimeSavedMins: Math.round(optResult.travelTimeSavedHours * 60),
+        optimizationResult: optResult
       }
     };
   }

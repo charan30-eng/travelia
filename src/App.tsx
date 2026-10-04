@@ -27,6 +27,8 @@ import { Sparkles, MessageSquare, Bot } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CountryCurrencyInfo, detectCountryFromDestination } from './data/currencyHelper';
 import { optimizeTrip, OptimizationResult } from './services/aiClient';
+import { calculateTravelDateRange, calculateTripDayDate } from './utils/dateUtils';
+import { placesClient } from './services/placesClient';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
@@ -121,17 +123,43 @@ export default function App() {
   };
 
   // Generate trip handler
-  const handleGenerateTrip = (
+  // Generate trip handler connected to Real Places Data Layer
+  const handleGenerateTrip = async (
     destination: string, 
     days: number, 
     travelers: number, 
     preferences: TripPreference[],
-    customDates?: string
+    customDates?: string,
+    startDateInput?: string
   ) => {
     setIsGenerating(true);
     
-    setTimeout(() => {
-      const generated = generateTripFromPrompt(destination, days, travelers, preferences, customDates);
+    try {
+      const generated = generateTripFromPrompt(destination, days, travelers, preferences, customDates, startDateInput);
+      const cleanDest = (destination || '').split(',')[0].trim();
+
+      // Fetch authentic live hotels and tourist places from Google Places Data Layer
+      try {
+        const [hotelsRes, attractionsRes] = await Promise.all([
+          placesClient.searchHotels(cleanDest, 4),
+          placesClient.searchAttractions(cleanDest, 6)
+        ]);
+
+        if (hotelsRes && hotelsRes.places.length > 0) {
+          generated.hotels = hotelsRes.places.map((p, idx) => 
+            placesClient.placeToHotel(p, idx, generated.nights)
+          );
+        }
+
+        if (attractionsRes && attractionsRes.places.length > 0) {
+          generated.touristPlaces = attractionsRes.places.map((p, idx) => 
+            placesClient.placeToTouristPlace(p, idx)
+          );
+        }
+      } catch (placesErr) {
+        console.warn('[App] Places Data Layer fetch fallback:', placesErr);
+      }
+
       setCurrentTrip(generated);
       setSelectedCountry(detectCountryFromDestination(generated.destination, generated.country));
       setIsGenerating(false);
@@ -144,7 +172,103 @@ export default function App() {
           origin: { y: 0.6 }
         });
       } catch (e) {}
-    }, 1200);
+    } catch (err) {
+      console.error('[App] Generation failed:', err);
+      setIsGenerating(false);
+    }
+  };
+
+  // Update trip dates & duration handler
+  const handleUpdateTripDates = (newStartDate: string, newDays?: number) => {
+    setCurrentTrip((prev) => {
+      const targetDays = newDays ?? prev.days;
+      const dateRange = calculateTravelDateRange(newStartDate, targetDays);
+      
+      let updatedItinerary = prev.itinerary;
+      if (targetDays !== prev.days) {
+        if (targetDays < prev.days) {
+          updatedItinerary = prev.itinerary.slice(0, targetDays);
+        } else {
+          const addedDaysCount = targetDays - prev.days;
+          const additionalDays = Array.from({ length: addedDaysCount }).map((_, idx) => {
+            const dayNum = prev.days + idx + 1;
+            const dayInfo = calculateTripDayDate(dateRange.startDateISO, dayNum);
+            return {
+              dayNumber: dayNum,
+              date: dayInfo.dateISO,
+              formattedDate: dayInfo.formattedDay,
+              title: `Day ${dayNum} Cultural Highlights & Local Discovery`,
+              theme: `Tailored experiences for ${prev.preferences?.join(' & ') || 'Leisure'}`,
+              activities: [
+                {
+                  id: `ext-act-${dayNum}-1`,
+                  time: '10:00 AM',
+                  activity: `Explore Scenic Landmarks of ${prev.destination}`,
+                  location: `Central ${prev.destination}`,
+                  estimatedCost: 400 * prev.travelers,
+                  duration: '2.5 hrs',
+                  aiRecommendation: 'Optimal morning lighting and relaxed walking route.',
+                  category: 'sightseeing' as const
+                },
+                {
+                  id: `ext-act-${dayNum}-2`,
+                  time: '01:30 PM',
+                  activity: `Regional Cuisine & Artisan Dining Experience`,
+                  location: `Historic Quarter, ${prev.destination}`,
+                  estimatedCost: 650 * prev.travelers,
+                  duration: '1.5 hrs',
+                  aiRecommendation: 'Savor regional specialties recommended by local concierges.',
+                  category: 'food' as const
+                },
+                {
+                  id: `ext-act-${dayNum}-3`,
+                  time: '04:30 PM',
+                  activity: `Sunset Scenic Leisure & Waterfront Stroll`,
+                  location: `Panoramic Viewpoint, ${prev.destination}`,
+                  estimatedCost: 300 * prev.travelers,
+                  duration: '2.0 hrs',
+                  aiRecommendation: 'Golden hour panoramic vista and tranquil evening unwind.',
+                  category: 'relaxation' as const
+                }
+              ]
+            };
+          });
+          updatedItinerary = [...prev.itinerary, ...additionalDays];
+        }
+      }
+
+      // Re-map dates for all days in itinerary
+      const mappedItinerary = updatedItinerary.map((d, idx) => {
+        const dayInfo = calculateTripDayDate(dateRange.startDateISO, idx + 1);
+        return {
+          ...d,
+          dayNumber: idx + 1,
+          date: dayInfo.dateISO,
+          formattedDate: dayInfo.formattedDay
+        };
+      });
+
+      // Recalculate hotel stay cost for new nights
+      const nights = dateRange.nights;
+      const currentHotelPricePerNight = prev.hotels?.find(h => h.selected)?.pricePerNight || Math.round(prev.budget.hotel / Math.max(1, prev.nights));
+      const newHotelTotal = Math.round(currentHotelPricePerNight * nights);
+      const budgetDiff = newHotelTotal - prev.budget.hotel;
+
+      return {
+        ...prev,
+        startDate: dateRange.startDateISO,
+        endDate: dateRange.endDateISO,
+        travelDates: dateRange.formattedRange,
+        days: dateRange.durationDays,
+        nights: dateRange.nights,
+        itinerary: mappedItinerary,
+        budget: {
+          ...prev.budget,
+          hotel: newHotelTotal,
+          total: prev.budget.total + budgetDiff
+        }
+      };
+    });
   };
 
   // Start planning from Home / Discover with optional prefilled destination
@@ -400,7 +524,7 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <TripDashboardView
             trip={currentTrip}
-            onRegenerate={() => handleGenerateTrip(currentTrip.destination, currentTrip.days, currentTrip.travelers, currentTrip.preferences)}
+            onRegenerate={() => handleGenerateTrip(currentTrip.destination, currentTrip.days, currentTrip.travelers, currentTrip.preferences, currentTrip.travelDates, currentTrip.startDate)}
             onEdit={() => {
               setPlannerDestination(currentTrip.destination);
               setActiveTab('planner');
@@ -414,6 +538,7 @@ export default function App() {
             onApplyReplan={handleApplyReplan}
             onApplyHealthImprovement={handleApplyHealthImprovement}
             onTriggerOptimization={() => handleOpenOptimization()}
+            onUpdateTripDates={handleUpdateTripDates}
             currency={currency}
             isSaved={savedTrips.some((t) => t.id === currentTrip.id)}
             selectedCountry={selectedCountry}

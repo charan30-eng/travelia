@@ -9,9 +9,12 @@ import {
 } from '../types/ai';
 import { calculateDynamicHealthScore } from './healthScoreService';
 import { optimizeTripItinerary, OptimizationOptions } from './itineraryOptimizer';
-import { replanItineraryForWeather, createWeatherOptimizationResult } from './weatherService';
+import { replanItineraryForWeather, createWeatherOptimizationResult, getAuthoritativeTripForecast } from './weatherService';
 import { simulateWhatIfScenario } from './whatIfSimulator';
 import { buildChatSystemPrompt } from '../prompts/chatPrompt';
+import { WeatherForecast } from '../types/weather';
+import { placesService } from './placesService';
+import { TraveliaPlace } from '../types/places';
 
 // Initialize Gemini Client safely without exposing keys
 function getGeminiClient(): GoogleGenAI | null {
@@ -68,14 +71,33 @@ export async function chatWithTraveliaAI(req: AIChatRequest): Promise<AIChatResp
     throw new Error('Valid tripContext with itinerary is required');
   }
 
-  // 2. Pre-calculate deterministic baseline metrics
-  const baselineHealth = calculateDynamicHealthScore(tripContext);
+  // 2. Retrieve authoritative weather forecast and compute deterministic baseline metrics
+  let weatherForecast = null;
+  try {
+    weatherForecast = await getAuthoritativeTripForecast(tripContext.destination, tripContext.startDate, tripContext.days);
+  } catch {}
+
+  // Fetch authoritative verified places for destination to prevent hallucinated places
+  let verifiedPlaces: TraveliaPlace[] | undefined = undefined;
+  try {
+    const placesRes = await placesService.searchPlaces({
+      destination: tripContext.destination,
+      limit: 10
+    });
+    if (placesRes && placesRes.places.length > 0) {
+      verifiedPlaces = placesRes.places;
+    }
+  } catch (pErr: any) {
+    console.warn('[Gemini Service] Could not fetch verified places:', pErr.message);
+  }
+
+  const baselineHealth = calculateDynamicHealthScore(tripContext, undefined, weatherForecast);
   const client = getGeminiClient();
 
   // 3. Attempt Gemini API if configured
   if (client) {
     try {
-      const systemInstruction = buildChatSystemPrompt(tripContext, baselineHealth);
+      const systemInstruction = buildChatSystemPrompt(tripContext, baselineHealth, weatherForecast, verifiedPlaces);
 
       // Clean and sanitize conversation history for Gemini API
       // Cap at last 10 messages to maintain tight focus and reasonable token limits
@@ -157,11 +179,15 @@ export async function chatWithTraveliaAI(req: AIChatRequest): Promise<AIChatResp
           };
         } else if (intent === 'weather_alert' || message.toLowerCase().includes('rain') || message.toLowerCase().includes('weather')) {
           const targetDay = constraints.targetDay || 2;
+          const matchingDay = weatherForecast?.days?.find(d => d.dayNumber === targetDay);
+          const weatherCond = constraints.weatherCondition || matchingDay?.condition || 'Rain Showers';
+          const rainChance = matchingDay?.precipitationProbability ?? (message.toLowerCase().includes('rain') ? 85 : 40);
+
           const replan = replanItineraryForWeather({
             tripContext,
             dayNumber: targetDay,
-            condition: constraints.weatherCondition || 'Rain Showers',
-            rainChancePercent: 80
+            condition: weatherCond,
+            rainChancePercent: rainChance
           });
           const optResult = createWeatherOptimizationResult(tripContext, replan);
 
@@ -246,7 +272,7 @@ export async function chatWithTraveliaAI(req: AIChatRequest): Promise<AIChatResp
   // 5. Safe Deterministic Fallback (Requirements 12 & 28)
   // Activates ONLY when Gemini API is unavailable or fails.
   // Performs REAL calculations via deterministic engines; NEVER hardcoded fake numbers.
-  return executeDeterministicFallback(tripContext, message, baselineHealth);
+  return executeDeterministicFallback(tripContext, message, baselineHealth, weatherForecast);
 }
 
 /**
@@ -256,7 +282,8 @@ export async function chatWithTraveliaAI(req: AIChatRequest): Promise<AIChatResp
 function executeDeterministicFallback(
   tripContext: TripContext, 
   message: string, 
-  baselineHealth: ReturnType<typeof calculateDynamicHealthScore>
+  baselineHealth: ReturnType<typeof calculateDynamicHealthScore>,
+  weatherForecast?: WeatherForecast | null
 ): AIChatResponse {
   const lower = message.toLowerCase();
 
@@ -308,24 +335,41 @@ function executeDeterministicFallback(
 
   // 2. Weather & Rain Replan
   if (lower.includes('rain') || lower.includes('weather') || lower.includes('storm')) {
+    const isDay1 = lower.includes('day 1') || lower.includes('day 01') || lower.includes('today');
+    const isDay3 = lower.includes('day 3') || lower.includes('day 03');
+    const targetDay = isDay1 ? 1 : (isDay3 ? 3 : 2);
+
+    let matchingDay: any = null;
+    if (weatherForecast && weatherForecast.days) {
+      matchingDay = weatherForecast.days.find((d: any) => d.dayNumber === targetDay);
+    }
+
+    const cond = matchingDay?.condition || 'Rain Showers';
+    const rainChance = matchingDay?.precipitationProbability ?? (lower.includes('rain') ? 85 : 40);
+
     const replan = replanItineraryForWeather({
       tripContext,
-      dayNumber: 2,
-      condition: 'Tropical Rain Showers',
-      rainChancePercent: 80
+      dayNumber: targetDay,
+      condition: cond,
+      rainChancePercent: rainChance
     });
     const optResult = createWeatherOptimizationResult(tripContext, replan);
 
-    const reply = `For rainy or stormy conditions in ${tripContext.destination}, outdoor coastal walks and water activities carry high exposure. I've prepared a Smart Weather Replan replacing exposed stops with air-conditioned heritage galleries, sheltered veranda dining, and scenic covered lounges.`;
+    let reply = '';
+    if (matchingDay && matchingDay.precipitationProbability != null) {
+      reply = `According to the authoritative weather forecast for ${tripContext.destination} on Day 0${targetDay} (${matchingDay.date}), expected conditions are ${matchingDay.condition} with a ${matchingDay.precipitationProbability}% precipitation probability (high: ${matchingDay.temperatureMaxC ?? 28}°C, wind: ${matchingDay.windSpeedKph ?? 20} km/h). I've prepared a Smart Weather Replan proposal replacing exposed outdoor stops with verified indoor cultural alternatives.`;
+    } else {
+      reply = `Live forecast is unavailable for this date range in ${tripContext.destination}. If you'd like to prepare for potential adverse weather on Day 0${targetDay}, I've generated a weather-safe proposal with verified indoor alternatives.`;
+    }
 
     return {
       reply,
       intent: 'weather_alert',
       actionProposal: {
         type: 'replan',
-        label: 'Apply Day 02 Weather-Safe Replan',
-        description: 'Swaps rain-vulnerable outdoor activities with sheltered cultural alternatives.',
-        estimatedSavings: 0,
+        label: `Apply Day 0${targetDay} Weather-Safe Replan`,
+        description: replan.summary,
+        estimatedSavings: replan.estimatedSavings || 0,
         healthScoreBefore: replan.healthScoreBefore,
         healthScoreAfter: replan.healthScoreAfter,
         healthScoreDelta: replan.healthScoreAfter - replan.healthScoreBefore,

@@ -1,6 +1,9 @@
 import { TripContext, ComputedHealthScore, ComputedHealthMetric } from '../types/ai';
 import { calculateTripCost } from './tripCostService';
-import { calculateTripRouteMetrics } from '../../src/data/geoRouting';
+import { calculateSyncTripRouteMetrics } from './routeIntelligenceService';
+import { TripRouteMetrics } from '../types/route';
+import { WeatherForecast } from '../types/weather';
+import { classifyActivityWeatherProfile } from './weatherImpactService';
 
 /**
  * Real computed Trip Health Score algorithm
@@ -13,7 +16,11 @@ import { calculateTripRouteMetrics } from '../../src/data/geoRouting';
  * - Weather Compatibility: 10%
  * Total = 100 points
  */
-export function calculateDynamicHealthScore(trip: TripContext): ComputedHealthScore {
+export function calculateDynamicHealthScore(
+  trip: TripContext,
+  precomputedRouteMetrics?: TripRouteMetrics,
+  weatherForecast?: WeatherForecast | null
+): ComputedHealthScore {
   const daysCount = Math.max(1, trip.days || trip.itinerary?.length || 1);
   const totalActivities = (trip.itinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0);
   const avgActivitiesPerDay = totalActivities / daysCount;
@@ -45,23 +52,39 @@ export function calculateDynamicHealthScore(trip: TripContext): ComputedHealthSc
   }
 
   // 2. Route Efficiency (20%)
-  // Real geographic transit evaluation based on actual destination waypoints
-  const routeMetrics = calculateTripRouteMetrics(trip);
-  const avgDailyKm = routeMetrics.totalDistanceKm / daysCount;
-  const maxDayActivities = Math.max(...(trip.itinerary || []).map(d => d.activities?.length || 0), 0);
+  // Derived directly from the authoritative Route Intelligence Engine
+  const routeMetrics = precomputedRouteMetrics || calculateSyncTripRouteMetrics({
+    destination: trip.destination,
+    itinerary: (trip.itinerary || []).map(d => ({
+      dayNumber: d.dayNumber,
+      activities: (d.activities || []).map((a: any) => ({
+        id: a.id || `act-${Math.random()}`,
+        name: a.activity || a.name || 'Activity',
+        location: a.location,
+        coords: a.coords,
+        time: a.time,
+        durationMinutes: a.durationMinutes,
+        category: a.category
+      }))
+    })),
+    hotels: trip.hotels
+  });
 
-  let routeScore = 88;
-  let routeInsight = `Total ~${routeMetrics.totalDistanceKm} km (~${routeMetrics.totalTravelHours}h transit) across ${daysCount} days along natural road corridors.`;
+  const routeScore = routeMetrics.routeEfficiencyScore !== null ? routeMetrics.routeEfficiencyScore : 85;
+  const totalKm = routeMetrics.totalDistanceKm ?? 0;
+  const totalHours = routeMetrics.totalTravelHours ?? 0;
+  const backtrackingKm = routeMetrics.totalBacktrackingDistanceKm ?? 0;
+  const avgDailyKm = routeMetrics.averageDailyDistanceKm ?? 0;
 
-  if (maxDayActivities > 5 || avgDailyKm > 45) {
-    routeScore = 72;
-    routeInsight = `High transit density detected (~${Math.round(avgDailyKm)} km/day, ${routeMetrics.totalTravelHours}h total); consider clustering nearby attractions.`;
-  } else if (maxDayActivities <= 3 && totalActivities > 0 && avgDailyKm <= 28) {
-    routeScore = 96;
-    routeInsight = `Compact, localized waypoint clustering (~${Math.round(avgDailyKm)} km/day) minimizes transit fatigue.`;
-  } else if (avgDailyKm <= 35) {
-    routeScore = 90;
-    routeInsight = `Efficient daily travel distances (~${Math.round(avgDailyKm)} km/day) with manageable road transit.`;
+  let routeInsight = `Authoritative route engine evaluated ~${totalKm} km (~${totalHours}h transit) across ${daysCount} days.`;
+  if (backtrackingKm > 5) {
+    routeInsight += ` Detected ~${backtrackingKm} km avoidable backtracking; reordering stops could eliminate unnecessary zigzags.`;
+  } else if (avgDailyKm <= 25 && totalKm > 0) {
+    routeInsight += ` Excellent compactness (~${avgDailyKm} km/day) with minimal transit burden.`;
+  } else if (totalKm > 0) {
+    routeInsight += ` Balanced transit corridors (~${avgDailyKm} km/day).`;
+  } else {
+    routeInsight = 'Route data unavailable or incomplete; location coordinates pending resolution.';
   }
 
   // 3. Schedule Balance (20%)
@@ -110,15 +133,63 @@ export function calculateDynamicHealthScore(trip: TripContext): ComputedHealthSc
   }
 
   // 6. Weather Compatibility (10%)
-  // Ratio of indoor vs outdoor flexibility
+  // Deterministic calculation based on active weather forecast and activity exposure
   let weatherScore = 88;
-  let weatherInsight = 'Balanced outdoor coastal and indoor heritage options.';
-  const hasRelaxationOrFood = trip.itinerary.some(d => 
-    d.activities.some(a => a.category === 'food' || a.category === 'relaxation')
-  );
-  if (hasRelaxationOrFood) {
-    weatherScore = 92;
-    weatherInsight = 'Includes indoor dining & sheltered cultural stops adaptable to weather shifts.';
+  let weatherInsight = 'Balanced indoor/outdoor itinerary.';
+
+  const allActivities = (trip.itinerary || []).flatMap(d => d.activities || []);
+  const outdoorActs = allActivities.filter(a => classifyActivityWeatherProfile(a) === 'outdoor');
+  const indoorActs = allActivities.filter(a => classifyActivityWeatherProfile(a) === 'indoor');
+
+  const activeForecast = weatherForecast || (trip as any).weatherForecast;
+
+  if (activeForecast && Array.isArray(activeForecast.days) && activeForecast.days.length > 0) {
+    let exposedCount = 0;
+    let moderateCount = 0;
+
+    trip.itinerary.forEach(day => {
+      const dayForecast = activeForecast.days.find((f: any) => 
+        (f.dayNumber === day.dayNumber) || 
+        (f.date && (day as any).date && f.date === (day as any).date)
+      );
+
+      if (dayForecast) {
+        const precip = dayForecast.precipitationProbability ?? 0;
+        const mm = dayForecast.precipitationMm ?? 0;
+        const isHigh = precip >= 60 || mm >= 5.0;
+        const isMod = precip >= 35 && precip < 60;
+
+        (day.activities || []).forEach(a => {
+          if (classifyActivityWeatherProfile(a) === 'outdoor') {
+            if (isHigh) exposedCount++;
+            else if (isMod) moderateCount++;
+          }
+        });
+      }
+    });
+
+    if (outdoorActs.length === 0) {
+      weatherScore = 95;
+      weatherInsight = 'All activities are sheltered indoors; immune to outdoor weather disruptions.';
+    } else if (exposedCount === 0 && moderateCount === 0) {
+      weatherScore = 95;
+      weatherInsight = `All ${outdoorActs.length} outdoor activities are scheduled in favorable weather conditions.`;
+    } else {
+      const penalty = Math.min(45, Math.round(((exposedCount * 20 + moderateCount * 8) / outdoorActs.length) * 20));
+      weatherScore = Math.max(50, 95 - penalty);
+      weatherInsight = `${exposedCount} outdoor stop(s) exposed to high precipitation forecast (>=60% rain); consider moving indoors.`;
+    }
+  } else {
+    // Forecast data unavailable or unconfigured: evaluate structural indoor flexibility
+    const totalCount = allActivities.length || 1;
+    const indoorRatio = indoorActs.length / totalCount;
+    if (indoorRatio >= 0.35) {
+      weatherScore = 88;
+      weatherInsight = `Itinerary has strong indoor flexibility (${Math.round(indoorRatio * 100)}% sheltered dining and cultural venues).`;
+    } else {
+      weatherScore = 78;
+      weatherInsight = `Itinerary is predominantly outdoor-focused (${Math.round((outdoorActs.length / totalCount) * 100)}%); vulnerable to unforecasted rain.`;
+    }
   }
 
   // Weighted Total (100 points)

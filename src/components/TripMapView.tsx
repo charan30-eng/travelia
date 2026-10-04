@@ -26,7 +26,8 @@ import {
   Info,
   Sliders,
   Share2,
-  Leaf
+  Leaf,
+  AlertTriangle
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -48,7 +49,8 @@ import {
   OptimizedRouteResult,
   calculateHaversineDistance,
   resolveCityProfile,
-  generateCurvedRoute
+  generateCurvedRoute,
+  fetchAuthoritativeDayRoute
 } from '../data/geoRouting';
 import { formatCurrency } from '../data/mockData';
 import confetti from 'canvas-confetti';
@@ -89,6 +91,10 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
   const [simVehicleCoords, setSimVehicleCoords] = useState<[number, number] | null>(null);
   const [simArrivedMessage, setSimArrivedMessage] = useState<string | null>(null);
 
+  // Authoritative Route Engine State
+  const [authoritativeMetrics, setAuthoritativeMetrics] = useState<any | null>(null);
+  const [roadPolyline, setRoadPolyline] = useState<[number, number][] | null>(null);
+
   // Waypoints state
   const [waypoints, setWaypoints] = useState<RouteWaypoint[]>(() => 
     buildDayWaypoints(trip, activeDay)
@@ -110,6 +116,50 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
     setActiveSimLeg(0);
     setSimVehicleCoords(null);
   }, [activeDay, trip.id, trip.destination]);
+
+  // Fetch authoritative route geometry and metrics from backend route engine
+  useEffect(() => {
+    let isCurrent = true;
+    const dayObj = trip.itinerary.find(d => d.dayNumber === activeDay);
+    const acts = (dayObj?.activities || []).map(a => ({
+      id: a.id,
+      name: a.activity,
+      location: a.location,
+      coords: a.coords,
+      time: a.time,
+      durationMinutes: a.durationMinutes,
+      category: a.category
+    }));
+
+    fetchAuthoritativeDayRoute(
+      activeDay,
+      acts,
+      trip.destination,
+      transitMode === 'walking' ? 'walking' : transitMode === 'bike' ? 'cycling' : 'driving'
+    ).then(data => {
+      if (!isCurrent || !data) return;
+      setAuthoritativeMetrics(data);
+
+      const stitchedGeometry: [number, number][] = [];
+      if (data.segments && Array.isArray(data.segments)) {
+        data.segments.forEach((seg: any) => {
+          if (seg.geometry && Array.isArray(seg.geometry)) {
+            stitchedGeometry.push(...seg.geometry);
+          }
+        });
+      }
+
+      if (stitchedGeometry.length > 2) {
+        setRoadPolyline(stitchedGeometry);
+      } else {
+        setRoadPolyline(null);
+      }
+    }).catch(() => {});
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeDay, waypoints, transitMode, trip.destination]);
 
   // Calculated route segments based on current waypoints and transit mode
   const segments = useMemo(() => {
@@ -243,12 +293,14 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
         }
       ).addTo(map);
     } else if (mapLayer === 'satellite') {
+      // High-resolution photorealistic Satellite with crisp road, beach & landmark overlays (Google Hybrid)
       tileLayerRef.current = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
         {
           ...commonTileOpts,
-          maxZoom: 18,
-          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping'
+          subdomains: ['0', '1', '2', '3'],
+          maxZoom: 20,
+          attribution: '&copy; Google Maps Satellite'
         }
       ).addTo(map);
     }
@@ -261,12 +313,13 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
     if (polylineGlowRef.current) map.removeLayer(polylineGlowRef.current);
     if (polylineFlowRef.current) map.removeLayer(polylineFlowRef.current);
 
-    // 3. Draw Aesthetic Curved Route Polyline (Organic Bézier Arcs)
+    // 3. Draw Route Polyline (Exact Road Geometry from OSRM, or Aesthetic Bézier Arcs)
     const { allCurvedCoords, legCurves } = generateCurvedRoute(waypoints);
     curvedLegsRef.current = legCurves;
+    const activeCoords = (roadPolyline && roadPolyline.length > 2) ? roadPolyline : allCurvedCoords;
 
     // Layer 1: Soft Ambient Neon Glow
-    polylineGlowRef.current = L.polyline(allCurvedCoords, {
+    polylineGlowRef.current = L.polyline(activeCoords, {
       color: '#22C55E',
       weight: 12,
       opacity: 0.28,
@@ -276,7 +329,7 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
     }).addTo(map);
 
     // Layer 2: Core Vibrant Lime Accent Line
-    polylineRef.current = L.polyline(allCurvedCoords, {
+    polylineRef.current = L.polyline(activeCoords, {
       color: '#A3E635',
       weight: 4.5,
       opacity: 0.95,
@@ -352,8 +405,8 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
     markersRef.current = newMarkers;
 
     // 5. Fit bounds with padding
-    if (allCurvedCoords.length > 0) {
-      const bounds = L.latLngBounds(allCurvedCoords);
+    if (activeCoords.length > 0) {
+      const bounds = L.latLngBounds(activeCoords);
       map.fitBounds(bounds, { padding: [45, 45], maxZoom: 15 });
     }
 
@@ -362,7 +415,7 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
       map.invalidateSize();
     }, 250);
 
-  }, [waypoints, mapLayer, isOptimized, selectedWaypointId, currency]);
+  }, [waypoints, mapLayer, isOptimized, selectedWaypointId, currency, roadPolyline]);
 
   // Clean up leaflet map on unmount
   useEffect(() => {
@@ -408,33 +461,92 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
   }, [selectedWaypointId, waypoints]);
 
   // Interactive Route Optimization Handler
-  const handleOptimizeRoute = () => {
+  const handleOptimizeRoute = async () => {
     setIsOptimizing(true);
     setIsSimulating(false);
 
-    setTimeout(() => {
-      const result = optimizeWaypointSequence(originalWaypoints, trip.destination, transitMode, currency);
-      setOptimizationResult(result);
-      setWaypoints(result.optimizedWaypoints);
-      setIsOptimized(true);
-      setIsOptimizing(false);
+    try {
+      const dayObj = trip.itinerary.find(d => d.dayNumber === activeDay);
+      const acts = (dayObj?.activities || []).map(a => ({
+        id: a.id,
+        name: a.activity,
+        location: a.location,
+        coords: a.coords,
+        time: a.time,
+        durationMinutes: a.durationMinutes,
+        category: a.category
+      }));
 
-      // Re-order itinerary activities in parent if callback provided
-      if (onApplyOptimizedRoute) {
-        const intermediateIds = result.optimizedWaypoints
-          .slice(1, -1)
-          .map(w => w.id);
-        onApplyOptimizedRoute(activeDay, intermediateIds);
+      const res = await fetch('/api/route/optimize-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dayNumber: activeDay,
+          activities: acts,
+          destination: trip.destination,
+          mode: transitMode === 'walking' ? 'walking' : transitMode === 'bike' ? 'cycling' : 'driving'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reorderedActivities && data.reorderedActivities.length > 0) {
+          const intermediateIds = data.reorderedActivities.map((ra: any) => ra.id);
+
+          const hotelStart = originalWaypoints[0];
+          const hotelEnd = originalWaypoints[originalWaypoints.length - 1];
+          const reorderedWps: RouteWaypoint[] = [hotelStart];
+
+          data.reorderedActivities.forEach((ra: any, idx: number) => {
+            const found = originalWaypoints.find(w => w.id === ra.id);
+            if (found) {
+              reorderedWps.push({ ...found, stopNumber: idx + 2 });
+            }
+          });
+          reorderedWps.push({ ...hotelEnd, stopNumber: reorderedWps.length + 1 });
+
+          setWaypoints(reorderedWps);
+          setOptimizationResult({
+            originalWaypoints,
+            optimizedWaypoints: reorderedWps,
+            originalDistanceKm: data.originalMetrics.totalDistanceKm || 0,
+            optimizedDistanceKm: data.optimizedMetrics.totalDistanceKm || 0,
+            originalMinutes: data.originalMetrics.totalTravelMinutes || 0,
+            optimizedMinutes: data.optimizedMetrics.totalTravelMinutes || 0,
+            distanceSavedKm: data.distanceSavedKm,
+            minutesSaved: data.travelTimeSavedMinutes,
+            moneySavedINR: Math.round(data.distanceSavedKm * TRANSIT_MODES[transitMode].costPerKmINR),
+            savingsNarrative: data.explanation
+          });
+          setIsOptimized(true);
+          setIsOptimizing(false);
+
+          if (onApplyOptimizedRoute) {
+            onApplyOptimizedRoute(activeDay, intermediateIds);
+          }
+
+          if (data.distanceSavedKm > 0) {
+            try {
+              confetti({ particleCount: 50, spread: 60, origin: { y: 0.65 } });
+            } catch (e) {}
+          }
+          return;
+        }
       }
+    } catch (err) {
+      // Fallback to local TSP calculation
+    }
 
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.65 }
-        });
-      } catch (e) {}
-    }, 900);
+    const result = optimizeWaypointSequence(originalWaypoints, trip.destination, transitMode, currency);
+    setOptimizationResult(result);
+    setWaypoints(result.optimizedWaypoints);
+    setIsOptimized(true);
+    setIsOptimizing(false);
+
+    if (onApplyOptimizedRoute) {
+      const intermediateIds = result.optimizedWaypoints.slice(1, -1).map(w => w.id);
+      onApplyOptimizedRoute(activeDay, intermediateIds);
+    }
   };
 
   // Revert back to unoptimized sequence
@@ -577,10 +689,17 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
             <h3 className="font-display font-extrabold text-xl text-[#191919]">
               Interactive Trip Map & Route Optimizer
             </h3>
-            <span className="px-2.5 py-0.5 rounded-full bg-[#E5ECE0] text-[#344E27] text-xs font-bold flex items-center gap-1">
-              <Compass className="w-3 h-3 text-[#344E27]" />
-              GPS Vector Map
-            </span>
+            {roadPolyline && roadPolyline.length > 2 ? (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                OSRM Road Routing
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full bg-[#E5ECE0] text-[#344E27] text-xs font-bold flex items-center gap-1">
+                <Compass className="w-3 h-3 text-[#344E27]" />
+                GPS Vector Map
+              </span>
+            )}
           </div>
           <p className="text-xs text-neutral-500 mt-1">
             Visualized daily journey with estimated transit times, leg distances, and intelligent route sequencing for {trip.destination}.
@@ -768,6 +887,41 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
         </div>
       )}
 
+      {/* Route Intelligence Alerts (Backtracking / Conflicts) */}
+      {authoritativeMetrics?.conflicts?.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 flex items-start gap-3 text-amber-900 text-xs">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-extrabold block">Travel Time Conflict Detected</span>
+            {authoritativeMetrics.conflicts.map((c: any, idx: number) => (
+              <p key={idx} className="text-amber-800 text-[11px] leading-relaxed">
+                {c.explanation}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {authoritativeMetrics?.backtrackingIncidents?.some((b: any) => !b.isNecessaryReturn) && !isOptimized && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 flex items-start justify-between gap-3 text-blue-900 text-xs">
+          <div className="flex items-start gap-2.5">
+            <Navigation className="w-4 h-4 text-blue-600 shrink-0 mt-0.5 rotate-45" />
+            <div>
+              <span className="font-extrabold block">Avoidable Zigzag Backtracking Detected</span>
+              <p className="text-blue-800 text-[11px] leading-relaxed">
+                {authoritativeMetrics.backtrackingIncidents.find((b: any) => !b.isNecessaryReturn)?.explanation}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleOptimizeRoute}
+            className="shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-[11px] font-bold cursor-pointer transition-all shadow-xs"
+          >
+            Fix Route Order
+          </button>
+        </div>
+      )}
+
       {/* Main Map & Stops Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
@@ -827,7 +981,7 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
                 className={`px-2.5 py-1 rounded-full font-bold cursor-pointer transition-all ${
                   mapLayer === 'satellite' ? 'bg-lime-400 text-neutral-950 font-extrabold shadow-sm' : 'text-neutral-300 hover:text-white'
                 }`}
-                title="Satellite World Imagery"
+                title="High-Resolution Satellite & Aerial Imagery"
               >
                 Satellite
               </button>

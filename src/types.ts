@@ -22,6 +22,8 @@ export interface ItineraryActivity {
   location: string;
   estimatedCost: number;
   duration: string;
+  durationMinutes?: number;
+  coords?: [number, number] | { latitude: number; longitude: number };
   aiRecommendation: string;
   category: 'sightseeing' | 'food' | 'relaxation' | 'adventure' | 'transit' | 'hotel';
   imageUrl?: string;
@@ -32,6 +34,86 @@ export interface ItineraryDay {
   title: string;
   theme: string;
   activities: ItineraryActivity[];
+  date?: string;
+  formattedDate?: string;
+}
+
+export type PlaceSource = 'google' | 'demo' | 'mixed' | 'unavailable';
+
+export type PlaceDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable';
+
+export type PlaceCategory = 
+  | 'hotel'
+  | 'tourist_attraction'
+  | 'landmark'
+  | 'museum'
+  | 'park'
+  | 'beach'
+  | 'temple'
+  | 'church'
+  | 'restaurant'
+  | 'historical_place'
+  | 'entertainment'
+  | 'shopping'
+  | 'other';
+
+export interface PlaceOpeningHours {
+  openNow?: boolean;
+  weekdayDescriptions?: string[];
+}
+
+export interface PlacePhoto {
+  name?: string;
+  uri?: string;
+  authorAttribution?: string;
+  widthPx?: number;
+  heightPx?: number;
+}
+
+export interface TraveliaPlace {
+  id: string;
+  providerId?: string;
+  name: string;
+  category: PlaceCategory;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  priceLevel?: number;
+  websiteUri?: string;
+  phoneNumber?: string;
+  openingHours?: PlaceOpeningHours;
+  photos?: PlacePhoto[];
+  types?: string[];
+  source: PlaceSource;
+  dataStatus: PlaceDataStatus;
+  fetchedAt?: string;
+  estimatedCost?: number;
+  estimatedDuration?: string;
+  description?: string;
+  tag?: string;
+  amenities?: string[];
+  reviewsCount?: number;
+  bestTimeToVisit?: string;
+  cuisine?: string;
+}
+
+export interface PlacesResponse {
+  success: boolean;
+  destination: string;
+  query?: string;
+  category?: PlaceCategory;
+  source: PlaceSource;
+  dataStatus: PlaceDataStatus;
+  fetchedAt: string;
+  totalCount: number;
+  places: TraveliaPlace[];
+  cacheAgeSeconds?: number;
+  error?: {
+    code: string;
+    message: string;
+  };
 }
 
 export interface Hotel {
@@ -47,6 +129,14 @@ export interface Hotel {
   description: string;
   tag: string;
   selected?: boolean;
+  source?: PlaceSource;
+  dataStatus?: PlaceDataStatus;
+  providerId?: string;
+  coordinates?: { latitude: number; longitude: number };
+  address?: string;
+  websiteUri?: string;
+  phoneNumber?: string;
+  openingHours?: PlaceOpeningHours;
 }
 
 export interface TouristPlace {
@@ -62,6 +152,14 @@ export interface TouristPlace {
   description: string;
   bestTimeToVisit: string;
   added?: boolean;
+  source?: PlaceSource;
+  dataStatus?: PlaceDataStatus;
+  providerId?: string;
+  coordinates?: { latitude: number; longitude: number };
+  address?: string;
+  websiteUri?: string;
+  phoneNumber?: string;
+  openingHours?: PlaceOpeningHours;
 }
 
 export interface Restaurant {
@@ -76,6 +174,14 @@ export interface Restaurant {
   aiRecommendedBadge: string;
   specialty: string;
   added?: boolean;
+  source?: PlaceSource;
+  dataStatus?: PlaceDataStatus;
+  providerId?: string;
+  coordinates?: { latitude: number; longitude: number };
+  address?: string;
+  websiteUri?: string;
+  phoneNumber?: string;
+  openingHours?: PlaceOpeningHours;
 }
 
 export interface BudgetBreakdown {
@@ -107,6 +213,8 @@ export interface TripPlan {
   nights: number;
   travelers: number;
   travelDates: string;
+  startDate?: string;
+  endDate?: string;
   preferences: TripPreference[];
   itinerary: ItineraryDay[];
   hotels: Hotel[];
@@ -312,15 +420,19 @@ export interface PackingItem {
 export interface WeatherForecastDay {
   dayNumber: number;
   dateStr: string;
-  condition: 'Sunny' | 'Partly Cloudy' | 'Afternoon Showers' | 'Clear Coastal' | 'Tropical Breeze' | 'Rainy';
+  condition: string;
   tempMaxC: number;
   tempMinC: number;
-  humidityPercent: number;
+  humidityPercent?: number | null;
   rainChancePercent: number;
-  uvIndex: number;
+  uvIndex?: number | null;
+  windSpeedKph?: number | null;
+  sunrise?: string | null;
+  sunset?: string | null;
   aiAdvisory: string;
   recommendedTime: string;
   isRainAlert?: boolean;
+  dataState?: 'live' | 'cached' | 'partial' | 'unavailable';
 }
 
 // 7. TRIP HEALTH SCORE

@@ -1,7 +1,7 @@
 import { TripPlan, DestinationCardData, Currency, CurrencyRate } from '../types';
 import { getFlightDataForDestination } from './flightData';
 import { detectCountryFromDestination } from './currencyHelper';
-import { calculateTravelDateRange } from '../utils/dateUtils';
+import { calculateTravelDateRange, calculateTripDayDate, getTodayISO } from '../utils/dateUtils';
 
 export const CURRENCY_RATES: Record<Currency, CurrencyRate> = {
   INR: { symbol: '₹', rateFromINR: 1 },
@@ -28,7 +28,9 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
   days: 5,
   nights: 4,
   travelers: 2,
-  travelDates: 'Nov 12 - Nov 16, 2026',
+  startDate: '2026-10-05',
+  endDate: '2026-10-09',
+  travelDates: 'Oct 05 – Oct 09, 2026',
   preferences: ['Relaxation', 'Food & Culture', 'Couple'],
   hotelCategory: 'mid',
   transportType: 'cab',
@@ -53,6 +55,8 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
   itinerary: [
     {
       dayNumber: 1,
+      date: '2026-10-05',
+      formattedDate: 'Mon, Oct 5',
       title: 'Arrival & Beach Exploration',
       theme: 'Unwind by the Arabian Sea & Sunset Welcome',
       activities: [
@@ -104,6 +108,8 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
     },
     {
       dayNumber: 2,
+      date: '2026-10-06',
+      formattedDate: 'Tue, Oct 6',
       title: 'North Goa Discovery',
       theme: '17th-Century Portuguese Forts & Coastal Panoramas',
       activities: [
@@ -155,6 +161,8 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
     },
     {
       dayNumber: 3,
+      date: '2026-10-07',
+      formattedDate: 'Wed, Oct 7',
       title: 'Culture & Local Food',
       theme: 'Old Goa UNESCO Cathedrals & Spice Plantation Walk',
       activities: [
@@ -206,6 +214,8 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
     },
     {
       dayNumber: 4,
+      date: '2026-10-08',
+      formattedDate: 'Thu, Oct 8',
       title: 'Adventure & Sunset',
       theme: 'Dudhsagar Waterfalls Safari & Jungle Canopy',
       activities: [
@@ -246,6 +256,8 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
     },
     {
       dayNumber: 5,
+      date: '2026-10-09',
+      formattedDate: 'Fri, Oct 9',
       title: 'Relaxation & Departure',
       theme: 'Morning Yoga, Souvenir Shopping & Departure',
       activities: [
@@ -583,6 +595,8 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
     days: 7,
     nights: 6,
     travelers: 2,
+    startDate: '2026-12-05',
+    endDate: '2026-12-11',
     travelDates: 'Dec 05 - Dec 11, 2026',
     preferences: ['Relaxation', 'Family', 'Food & Culture'],
     hotelCategory: 'luxury',
@@ -630,6 +644,8 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
     days: 6,
     nights: 5,
     travelers: 2,
+    startDate: '2027-01-15',
+    endDate: '2027-01-20',
     travelDates: 'Jan 15 - Jan 20, 2027',
     preferences: ['Historical', 'Luxury' as any, 'Food & Culture'],
     hotelCategory: 'luxury',
@@ -661,7 +677,8 @@ export const generateTripFromPrompt = (
   days: number = 5,
   travelers: number = 2,
   preferences: string[] = ['Relaxation', 'Food & Culture'],
-  customDates?: string
+  customDates?: string,
+  startDateInput?: string
 ): TripPlan => {
   const destLower = destination.toLowerCase();
   
@@ -705,50 +722,58 @@ export const generateTripFromPrompt = (
   const flightBudget = flightPerPerson * travelers;
   const total = hotelBudget + flightBudget + foodBudget + transportBudget + activitiesBudget + miscBudget;
 
-  const generatedItinerary = Array.from({ length: days }).map((_, i) => ({
-    dayNumber: i + 1,
-    title: i === 0 
-      ? 'Arrival & Neighborhood Discovery' 
-      : i === days - 1 
-      ? 'Morning Highlights & Departure' 
-      : `Highlights & Cultural Immersion Part ${i}`,
-    theme: `Curated AI experiences tailored for ${preferences.join(' & ')}`,
-    activities: [
-      {
-        id: `gen-act-${i}-1`,
-        time: '09:30 AM',
-        activity: `Morning Exploration at ${destination} Landmark`,
-        location: `Central ${destination}`,
-        estimatedCost: 400 * travelers,
-        duration: '2.5 hrs',
-        aiRecommendation: 'Early arrival avoids peak queues; prime photo lighting.',
-        category: 'sightseeing' as const,
-        imageUrl: heroImage
-      },
-      {
-        id: `gen-act-${i}-2`,
-        time: '01:00 PM',
-        activity: `Authentic Regional Lunch & Cafe Break`,
-        location: `Old Town ${destination}`,
-        estimatedCost: 650 * travelers,
-        duration: '1.5 hrs',
-        aiRecommendation: 'Ask for the chef’s seasonal special and local beverage.',
-        category: 'food' as const,
-        imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=600&auto=format&fit=crop'
-      },
-      {
-        id: `gen-act-${i}-3`,
-        time: '04:00 PM',
-        activity: `Signature Activity & Scenic Sunset Vantage Point`,
-        location: `Panoramic Hilltop / Waterfront`,
-        estimatedCost: 500 * travelers,
-        duration: '2.5 hrs',
-        aiRecommendation: 'Unmissable golden hour vantage point.',
-        category: 'relaxation' as const,
-        imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop'
-      }
-    ]
-  }));
+  const effectiveStartDate = startDateInput || getTodayISO();
+  const dateRange = calculateTravelDateRange(effectiveStartDate, days);
+
+  const generatedItinerary = Array.from({ length: days }).map((_, i) => {
+    const dayInfo = calculateTripDayDate(dateRange.startDateISO, i + 1);
+    return {
+      dayNumber: i + 1,
+      date: dayInfo.dateISO,
+      formattedDate: dayInfo.formattedDay,
+      title: i === 0 
+        ? 'Arrival & Neighborhood Discovery' 
+        : i === days - 1 
+        ? 'Morning Highlights & Departure' 
+        : `Highlights & Cultural Immersion Part ${i}`,
+      theme: `Curated AI experiences tailored for ${preferences.join(' & ')}`,
+      activities: [
+        {
+          id: `gen-act-${i}-1`,
+          time: '09:30 AM',
+          activity: `Morning Exploration at ${destination} Landmark`,
+          location: `Central ${destination}`,
+          estimatedCost: 400 * travelers,
+          duration: '2.5 hrs',
+          aiRecommendation: 'Early arrival avoids peak queues; prime photo lighting.',
+          category: 'sightseeing' as const,
+          imageUrl: heroImage
+        },
+        {
+          id: `gen-act-${i}-2`,
+          time: '01:00 PM',
+          activity: `Authentic Regional Lunch & Cafe Break`,
+          location: `Old Town ${destination}`,
+          estimatedCost: 650 * travelers,
+          duration: '1.5 hrs',
+          aiRecommendation: 'Ask for the chef’s seasonal special and local beverage.',
+          category: 'food' as const,
+          imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=600&auto=format&fit=crop'
+        },
+        {
+          id: `gen-act-${i}-3`,
+          time: '04:00 PM',
+          activity: `Signature Activity & Scenic Sunset Vantage Point`,
+          location: `Panoramic Hilltop / Waterfront`,
+          estimatedCost: 500 * travelers,
+          duration: '2.5 hrs',
+          aiRecommendation: 'Unmissable golden hour vantage point.',
+          category: 'relaxation' as const,
+          imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop'
+        }
+      ]
+    };
+  });
 
   return {
     id: `trip-${Date.now()}`,
@@ -756,10 +781,12 @@ export const generateTripFromPrompt = (
     country: detectedCountry.countryName,
     tagline,
     heroImage,
-    days,
-    nights,
+    days: dateRange.durationDays,
+    nights: dateRange.nights,
     travelers,
-    travelDates: customDates || calculateTravelDateRange('2026-11-12', days).formattedRange,
+    startDate: dateRange.startDateISO,
+    endDate: dateRange.endDateISO,
+    travelDates: customDates || dateRange.formattedRange,
     preferences: preferences as any,
     hotelCategory: 'mid',
     transportType: 'cab',
