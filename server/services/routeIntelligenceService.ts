@@ -1,14 +1,15 @@
 /**
  * Authoritative Route Intelligence Service
  * 
- * Centralized, data-driven route engine for Travelia:
- * 1. Computes genuine route segments, road distances, and transit durations.
- * 2. Distinguishes road distance (from routing provider) from straight-line Haversine distance.
- * 3. Detects true geographic backtracking while preserving legitimate hotel/base returns.
- * 4. Identifies time-aware transit conflicts (activity end + travel time > next activity start).
- * 5. Respects user constraints, fixed times, and opening hours during route optimization.
- * 6. Generates deterministic before/after comparisons with zero forced improvements.
- * 7. Derives Route Efficiency Scores purely from measurable geographic data.
+ * Centralized, single source of truth for:
+ * 1. Distance & Travel Time (authoritative road distance vs. Haversine straight-line distance)
+ * 2. Route Geometry (real road polyline from Google Routes / OSRM; honest straight-line fallback)
+ * 3. Route Segments (hotel → activity, activity → activity, activity → hotel, airport → hotel, hotel → airport)
+ * 4. Route Matrix (multi-stop pairwise distance/time matrix with field masks and caching)
+ * 5. Route Efficiency (compactness, transit burden, and backtracking ratio)
+ * 6. Backtracking Detection (real route metrics; preserves legitimate hotel returns)
+ * 7. Multi-Objective Route Optimization (minimum travel time, distance, cost, balanced; preserves mustVisit, fixed times, opening hours)
+ * 8. Real Before/After Metrics (zero fabricated values; zero improvement strictly returned as 0)
  */
 
 import {
@@ -16,7 +17,7 @@ import {
   GeoAvailability,
   TravelMode,
   DistanceType,
-  ResolvedLocation,
+  RouteDataStatus,
   RouteResult,
   RouteSegment,
   BacktrackingIncident,
@@ -26,10 +27,17 @@ import {
   TripRouteMetrics,
   RouteComparison,
   RouteOptimizationConstraint,
-  RouteIntelligenceResponse
+  RouteIntelligenceResponse,
+  RouteMatrixResult
 } from '../types/route';
-import { resolveLocation, CITY_CENTERS } from './locationResolutionService';
-import { activeRouteProvider, calculateHaversineDistanceKm } from './routeEngine/routeProvider';
+import { resolveLocation } from './locationResolutionService';
+import {
+  activeRouteProvider,
+  calculateHaversineDistanceKm,
+  ROUTE_CACHE,
+  makeCacheKey,
+  CACHE_TTL_MS
+} from './routeEngine/routeProvider';
 
 // Helper: parse time string e.g. "10:30 AM", "14:00" to minutes from midnight
 export function parseTimeToMinutes(timeStr?: string): number | null {
@@ -74,7 +82,7 @@ export function formatMinutesToTime(minutes: number): string {
   return `${padH}:${padM} ${period}`;
 }
 
-// Activity interface for routing engine
+// Activity input interface for routing engine
 export interface RouteActivityInput {
   id: string;
   name: string;
@@ -90,15 +98,18 @@ export interface RouteActivityInput {
 }
 
 /**
- * Resolves all activities and optional hotel for a day.
+ * Resolves all activities, hotel, and airport coordinates for a day.
+ * Never invents coordinates; returns null if location cannot be verified.
  */
 export function resolveDayCoordinates(
   activities: RouteActivityInput[],
   destination: string,
-  hotelCoords?: Coordinates
+  hotelCoords?: Coordinates,
+  airportCoords?: Coordinates
 ): {
   resolvedActivities: Array<RouteActivityInput & { resolvedCoords: Coordinates | null; resolvedName: string }>;
   resolvedHotel: Coordinates | null;
+  resolvedAirport: Coordinates | null;
   availability: GeoAvailability;
 } {
   let resolvedHotel = hotelCoords || null;
@@ -110,6 +121,18 @@ export function resolveDayCoordinates(
     });
     if (hotelRes) {
       resolvedHotel = { latitude: hotelRes.latitude, longitude: hotelRes.longitude };
+    }
+  }
+
+  let resolvedAirport = airportCoords || null;
+  if (!resolvedAirport) {
+    const airportRes = resolveLocation({
+      name: `${destination} Airport`,
+      location: `${destination} International Airport`,
+      destination
+    });
+    if (airportRes) {
+      resolvedAirport = { latitude: airportRes.latitude, longitude: airportRes.longitude };
     }
   }
 
@@ -150,68 +173,71 @@ export function resolveDayCoordinates(
   return {
     resolvedActivities,
     resolvedHotel,
+    resolvedAirport,
     availability
   };
 }
 
 /**
- * Calculates genuine route segments and metrics for a single day.
+ * Stop item representation inside the day route sequence.
  */
-export async function calculateDayRouteMetrics(
+export interface StopItem {
+  id: string;
+  name: string;
+  coords: Coordinates | null;
+  time?: string;
+  durationMinutes?: number;
+  openingHours?: string;
+  isHotel?: boolean;
+  isAirport?: boolean;
+  stopType: 'hotel' | 'airport' | 'activity';
+}
+
+/**
+ * Builds the authoritative sequence of stops for a day:
+ * Day 1 (Arrival): Airport -> Hotel -> Activities -> Hotel
+ * Final Day (Departure): Hotel -> Activities -> Hotel -> Airport (or direct to Airport)
+ * Standard Days: Hotel -> Activities -> Hotel
+ */
+export function buildDayStopSequence(
   dayNumber: number,
-  activities: RouteActivityInput[],
+  activities: Array<RouteActivityInput & { resolvedCoords: Coordinates | null; resolvedName: string }>,
   destination: string,
-  mode: TravelMode = 'driving',
-  hotelCoords?: Coordinates
-): Promise<DailyRouteMetrics> {
-  const { resolvedActivities, resolvedHotel, availability } = resolveDayCoordinates(
-    activities,
-    destination,
-    hotelCoords
-  );
-
-  // If no activities, return empty metrics
-  if (resolvedActivities.length === 0) {
-    return {
-      day: dayNumber,
-      totalDistanceKm: 0,
-      totalTravelMinutes: 0,
-      straightLineDistanceKm: 0,
-      segmentCount: 0,
-      segments: [],
-      backtrackingDistanceKm: 0,
-      backtrackingIncidents: [],
-      routeEfficiencyScore: 100,
-      availability: 'complete',
-      conflicts: [],
-      openingHourViolations: []
-    };
-  }
-
-  // Construct sequence of stops: Hotel -> Activity 1 -> ... -> Activity N -> Return to Hotel
-  interface StopItem {
-    id: string;
-    name: string;
-    coords: Coordinates | null;
-    time?: string;
-    durationMinutes?: number;
-    openingHours?: string;
-    isHotel?: boolean;
-  }
-
+  resolvedHotel: Coordinates | null,
+  resolvedAirport: Coordinates | null,
+  options?: { isArrivalDay?: boolean; isDepartureDay?: boolean }
+): StopItem[] {
   const stops: StopItem[] = [];
+  const isArrival = options?.isArrivalDay === true;
+  const isDeparture = options?.isDepartureDay === true;
 
+  // 1. Arrival Day: Airport -> Hotel
+  if (isArrival && resolvedAirport) {
+
+    stops.push({
+      id: `airport-arrival-day-${dayNumber}`,
+      name: `${destination} Airport Arrival`,
+      coords: resolvedAirport,
+      time: '07:30 AM',
+      isAirport: true,
+      stopType: 'airport'
+    });
+  }
+
+  // 2. Day start from hotel
   if (resolvedHotel) {
     stops.push({
       id: `hotel-start-day-${dayNumber}`,
       name: `${destination} Base Hotel`,
       coords: resolvedHotel,
-      time: '08:30 AM',
-      isHotel: true
+      time: isArrival && resolvedAirport ? '09:00 AM' : '08:30 AM',
+      isHotel: true,
+      stopType: 'hotel'
     });
   }
 
-  resolvedActivities.forEach(act => {
+  // 3. Sequential Activities
+  activities.forEach(act => {
     stops.push({
       id: act.id,
       name: act.name,
@@ -219,26 +245,106 @@ export async function calculateDayRouteMetrics(
       time: act.time,
       durationMinutes: act.durationMinutes || 90,
       openingHours: act.openingHours,
-      isHotel: false
+      stopType: 'activity'
     });
   });
 
-  if (resolvedHotel) {
+  // 4. Return to hotel (or proceed to airport on departure day)
+  if (isDeparture && resolvedAirport) {
+    if (resolvedHotel) {
+      stops.push({
+        id: `hotel-checkout-day-${dayNumber}`,
+        name: `${destination} Hotel (Luggage Retrieval)`,
+        coords: resolvedHotel,
+        time: '06:00 PM',
+        isHotel: true,
+        stopType: 'hotel'
+      });
+    }
+    stops.push({
+      id: `airport-departure-day-${dayNumber}`,
+      name: `${destination} Airport Departure`,
+      coords: resolvedAirport,
+      time: '08:00 PM',
+      isAirport: true,
+      stopType: 'airport'
+    });
+  } else if (resolvedHotel) {
     stops.push({
       id: `hotel-return-day-${dayNumber}`,
       name: `Return to ${destination} Base Hotel`,
       coords: resolvedHotel,
       time: '09:30 PM',
-      isHotel: true
+      isHotel: true,
+      stopType: 'hotel'
     });
   }
 
-  // Calculate each segment
+  return stops;
+}
+
+/**
+ * Calculates genuine route segments and metrics for a single day.
+ * Single source of truth for distances, durations, geometry, conflicts, and backtracking.
+ */
+export async function calculateDayRouteMetrics(
+  dayNumber: number,
+  activities: RouteActivityInput[],
+  destination: string,
+  mode: TravelMode = 'driving',
+  hotelCoords?: Coordinates,
+  airportCoords?: Coordinates,
+  options?: { isArrivalDay?: boolean; isDepartureDay?: boolean }
+): Promise<DailyRouteMetrics> {
+  const { resolvedActivities, resolvedHotel, resolvedAirport, availability } = resolveDayCoordinates(
+    activities,
+    destination,
+    hotelCoords,
+    airportCoords
+  );
+
+  const retrievedAt = new Date().toISOString();
+
+  // If no activities, return empty metrics
+  if (resolvedActivities.length === 0) {
+    return {
+      day: dayNumber,
+      totalDistanceKm: 0,
+      roadDistanceKm: 0,
+      straightLineDistanceKm: 0,
+      totalTravelMinutes: 0,
+      staticTravelTimeMinutes: 0,
+      trafficAwareTravelTimeMinutes: null,
+      segmentCount: 0,
+      segments: [],
+      backtrackingDistanceKm: 0,
+      backtrackingIncidents: [],
+      routeEfficiencyScore: 100,
+      availability: 'complete',
+      dataStatus: 'live',
+      provider: 'Travelia Authoritative Route Engine',
+      conflicts: [],
+      openingHourViolations: []
+    };
+  }
+
+  const stops = buildDayStopSequence(
+    dayNumber,
+    resolvedActivities,
+    destination,
+    resolvedHotel,
+    resolvedAirport,
+    options
+  );
+
   const segments: RouteSegment[] = [];
-  let totalDistanceKm = 0;
-  let totalTravelMinutes = 0;
+  let totalRoadKm = 0;
   let totalStraightLineKm = 0;
+  let totalTravelMinutes = 0;
+  let totalStaticTravelMinutes = 0;
+  let totalTrafficTravelMinutes: number | null = null;
   let hasMissingCoords = false;
+  let overallDataStatus: RouteDataStatus = 'live';
 
   for (let i = 0; i < stops.length - 1; i++) {
     const from = stops[i];
@@ -246,6 +352,7 @@ export async function calculateDayRouteMetrics(
 
     if (!from.coords || !to.coords) {
       hasMissingCoords = true;
+      overallDataStatus = 'unavailable';
       segments.push({
         fromActivityId: from.id,
         toActivityId: to.id,
@@ -253,10 +360,17 @@ export async function calculateDayRouteMetrics(
         toName: to.name,
         fromCoords: from.coords,
         toCoords: to.coords,
+        straightLineDistanceKm: null,
+        roadDistanceKm: null,
         distanceKm: null,
         travelTimeMinutes: null,
+        staticTravelTimeMinutes: null,
+        trafficAwareTravelTimeMinutes: null,
         distanceType: 'straight_line',
         mode,
+        provider: 'unresolved_coordinates',
+        retrievedAt,
+        dataStatus: 'unavailable',
         availability: 'unavailable',
         aiTip: 'Exact coordinates unavailable for this transit leg.'
       });
@@ -265,10 +379,30 @@ export async function calculateDayRouteMetrics(
 
     const routeResult = await activeRouteProvider.getRoute(from.coords, to.coords, mode);
     const straightDist = calculateHaversineDistanceKm(from.coords, to.coords);
-    totalStraightLineKm += straightDist;
 
-    totalDistanceKm += routeResult.distanceKm;
-    totalTravelMinutes += routeResult.durationMinutes;
+    totalStraightLineKm += straightDist;
+    const roadKm = routeResult.roadDistanceKm ?? straightDist;
+    totalRoadKm += roadKm;
+
+    totalTravelMinutes += routeResult.travelTimeMinutes;
+    totalStaticTravelMinutes += routeResult.staticTravelTimeMinutes;
+
+    if (routeResult.trafficAwareTravelTimeMinutes !== null && routeResult.trafficAwareTravelTimeMinutes !== undefined) {
+      totalTrafficTravelMinutes = (totalTrafficTravelMinutes || 0) + routeResult.trafficAwareTravelTimeMinutes;
+    }
+
+    if (routeResult.dataStatus === 'fallback' && overallDataStatus === 'live') {
+      overallDataStatus = 'fallback';
+    } else if (routeResult.dataStatus === 'cached' && overallDataStatus === 'live') {
+      overallDataStatus = 'cached';
+    }
+
+    // Determine segment flow label
+    let segmentLabel = `${from.name} → ${to.name}`;
+    if (from.isAirport && to.isHotel) segmentLabel = `Airport Transfer: ${from.name} → ${to.name}`;
+    else if (from.isHotel && to.isAirport) segmentLabel = `Airport Departure: ${from.name} → ${to.name}`;
+    else if (from.isHotel) segmentLabel = `Hotel Departure: ${from.name} → ${to.name}`;
+    else if (to.isHotel) segmentLabel = `Hotel Return: ${from.name} → ${to.name}`;
 
     segments.push({
       fromActivityId: from.id,
@@ -277,13 +411,20 @@ export async function calculateDayRouteMetrics(
       toName: to.name,
       fromCoords: from.coords,
       toCoords: to.coords,
-      distanceKm: routeResult.distanceKm,
-      travelTimeMinutes: routeResult.durationMinutes,
+      straightLineDistanceKm: straightDist,
+      roadDistanceKm: routeResult.roadDistanceKm,
+      distanceKm: roadKm,
+      travelTimeMinutes: routeResult.travelTimeMinutes,
+      staticTravelTimeMinutes: routeResult.staticTravelTimeMinutes,
+      trafficAwareTravelTimeMinutes: routeResult.trafficAwareTravelTimeMinutes,
       distanceType: routeResult.distanceType,
       mode,
       geometry: routeResult.geometry,
+      provider: routeResult.provider,
+      retrievedAt: routeResult.retrievedAt,
+      dataStatus: routeResult.dataStatus,
       availability: 'calculated',
-      aiTip: `${routeResult.distanceType === 'road' ? 'Road route' : 'Straight-line corridor'} via ${mode}: ${routeResult.distanceKm} km, ~${routeResult.durationMinutes} mins.`
+      aiTip: `${segmentLabel} (${routeResult.distanceType === 'road' ? 'Road route' : 'Straight-line corridor'} via ${mode}): ${roadKm} km, ~${routeResult.travelTimeMinutes} mins.`
     });
   }
 
@@ -302,23 +443,31 @@ export async function calculateDayRouteMetrics(
 
   // Compute Route Efficiency Score
   const routeEfficiencyScore = calculateDailyEfficiencyScore(
-    totalDistanceKm,
+    totalRoadKm,
     totalTravelMinutes,
     backtrackingDistanceKm,
     stops.length
   );
 
+  const roundedRoadKm = Math.round(totalRoadKm * 10) / 10;
+  const roundedStraightKm = Math.round(totalStraightLineKm * 10) / 10;
+
   return {
     day: dayNumber,
-    totalDistanceKm: hasMissingCoords && totalDistanceKm === 0 ? null : Math.round(totalDistanceKm * 10) / 10,
+    totalDistanceKm: hasMissingCoords && totalRoadKm === 0 ? null : roundedRoadKm,
+    roadDistanceKm: hasMissingCoords && totalRoadKm === 0 ? null : roundedRoadKm,
+    straightLineDistanceKm: roundedStraightKm,
     totalTravelMinutes: hasMissingCoords && totalTravelMinutes === 0 ? null : totalTravelMinutes,
-    straightLineDistanceKm: Math.round(totalStraightLineKm * 10) / 10,
+    staticTravelTimeMinutes: hasMissingCoords && totalStaticTravelMinutes === 0 ? null : totalStaticTravelMinutes,
+    trafficAwareTravelTimeMinutes: totalTrafficTravelMinutes,
     segmentCount: segments.length,
     segments,
     backtrackingDistanceKm,
     backtrackingIncidents,
     routeEfficiencyScore,
     availability: hasMissingCoords ? (segments.some(s => s.availability === 'calculated') ? 'partial' : 'unavailable') : 'complete',
+    dataStatus: overallDataStatus,
+    provider: 'Travelia Authoritative Route Engine',
     conflicts,
     openingHourViolations
   };
@@ -326,15 +475,17 @@ export async function calculateDayRouteMetrics(
 
 /**
  * Detects geographic backtracking between stops.
- * Distinguishes necessary return to base hotel at end of day from avoidable zig-zags.
+ * Distinguishes legitimate base hotel/overnight return from avoidable zig-zags.
+ * Hotel -> Activity -> Hotel is NEVER penalized as an error.
  */
 export function detectBacktracking(
-  stops: Array<{ id: string; name: string; coords: Coordinates | null; isHotel?: boolean }>,
+  stops: Array<{ id: string; name: string; coords: Coordinates | null; isHotel?: boolean; isAirport?: boolean }>,
   dayNumber: number
 ): BacktrackingIncident[] {
   const incidents: BacktrackingIncident[] = [];
   const validStops = stops.filter(s => s.coords !== null);
 
+  // If <= 2 stops, or if simple Hotel -> Activity -> Hotel, no avoidable detour exists
   if (validStops.length < 3) return incidents;
 
   for (let i = 0; i < validStops.length - 2; i++) {
@@ -348,11 +499,18 @@ export function detectBacktracking(
     const d23 = calculateHaversineDistanceKm(p2.coords, p3.coords);
     const d13 = calculateHaversineDistanceKm(p1.coords, p3.coords);
 
-    // If p3 is the end-of-day hotel return, it is a legitimate necessary base return
+    // Legitimate base returns:
+    // 1. End of day hotel return (p3 is hotel and last stop)
+    // 2. Scheduled rest break / hotel visit (p2 or p3 is hotel)
+    // 3. Airport transit leg
     const isEndingReturn = (i + 2 === validStops.length - 1) && p3.isHotel === true;
+    const isBaseHotelExcursion = p1.isHotel === true && p3.isHotel === true;
+    const isAirportTransit = p1.isAirport === true || p3.isAirport === true;
 
-    // Geographic zig-zag: detour ratio = (d12 + d23) / d13
-    // If d13 is very short but travel visits an intermediate far-away point p2
+    const isLegitimateReturn = isEndingReturn || isBaseHotelExcursion || isAirportTransit;
+
+    // Geographic detour check:
+    // When d13 is direct and short, but route diverts far out to p2 and reverses back
     if (d13 > 0.1 && (d12 + d23) / d13 > 2.4 && (d12 + d23 - d13) >= 4.0) {
       const excess = Math.round((d12 + d23 - d13) * 10) / 10;
       incidents.push({
@@ -362,9 +520,9 @@ export function detectBacktracking(
         fromName: p2.name,
         toName: p3.name,
         excessDistanceKm: excess,
-        isNecessaryReturn: isEndingReturn,
-        explanation: isEndingReturn
-          ? `Return to base accommodation (${excess} km transit); scheduled as standard day-end return.`
+        isNecessaryReturn: isLegitimateReturn,
+        explanation: isLegitimateReturn
+          ? `Return to base accommodation or terminal (${excess} km transit); scheduled as standard lodging return.`
           : `Avoidable geographic zigzag: ${p2.name} deviates from direct corridor between ${p1.name} and ${p3.name}, incurring ~${excess} km excess travel.`
       });
     }
@@ -437,7 +595,6 @@ export function detectOpeningHourViolations(
     const startMin = parseTimeToMinutes(stop.time);
     if (startMin === null) return;
 
-    // Pattern e.g. "09:00 - 18:00" or "09:00 AM - 05:00 PM"
     const parts = stop.openingHours.split(/[-–to]/i);
     if (parts.length === 2) {
       const openMin = parseTimeToMinutes(parts[0].trim());
@@ -463,10 +620,6 @@ export function detectOpeningHourViolations(
 
 /**
  * Calculates a genuine, deterministic Daily Route Efficiency Score (0 - 100).
- * Based on:
- * - Distance density (compactness)
- * - Daily transit duration burden
- * - Avoidable backtracking ratio
  */
 export function calculateDailyEfficiencyScore(
   distanceKm: number,
@@ -476,18 +629,25 @@ export function calculateDailyEfficiencyScore(
 ): number {
   if (stopsCount <= 1 || distanceKm <= 0) return 100;
 
-  // 1. Compactness: penalize high mileage per stop
   const kmPerStop = distanceKm / Math.max(1, stopsCount);
   const compactnessPenalty = Math.min(30, kmPerStop * 2.2);
-
-  // 2. Travel Burden: penalize excessive transit time (> 120 mins)
   const transitPenalty = Math.min(30, Math.max(0, (travelMinutes - 45) * 0.3));
-
-  // 3. Backtracking: penalize avoidable zig-zags
   const backtrackingPenalty = Math.min(30, backtrackingKm * 2.5);
 
   const rawScore = 100 - (compactnessPenalty + transitPenalty + backtrackingPenalty);
   return Math.max(15, Math.min(100, Math.round(rawScore)));
+}
+
+/**
+ * Calculates Route Matrix across multiple origins and destinations.
+ * Authoritative matrix API with in-memory caching and Google Routes ComputeRouteMatrix support.
+ */
+export async function calculateRouteMatrix(
+  origins: Coordinates[],
+  destinations: Coordinates[],
+  mode: TravelMode = 'driving'
+): Promise<RouteMatrixResult> {
+  return await activeRouteProvider.getRouteMatrix(origins, destinations, mode);
 }
 
 /**
@@ -502,11 +662,14 @@ export async function calculateTripRouteMetrics(
     }>;
     hotels?: Array<{ name: string; location?: string; selected?: boolean; coords?: Coordinates }>;
     mode?: TravelMode;
+    airportCoords?: Coordinates;
+    existingBookings?: { flights?: any; hotel?: any };
   }
 ): Promise<TripRouteMetrics> {
   const days = trip.itinerary || [];
   const destination = trip.destination || 'Destination';
   const mode = trip.mode || 'driving';
+  const retrievedAt = new Date().toISOString();
 
   let hotelCoords: Coordinates | undefined = undefined;
   if (trip.hotels && trip.hotels.length > 0) {
@@ -521,35 +684,64 @@ export async function calculateTripRouteMetrics(
     }
   }
 
-  const dailyMetrics: DailyRouteMetrics[] = [];
+  let airportCoords: Coordinates | undefined = trip.airportCoords;
+  if (!airportCoords && (trip.existingBookings?.flights || days.length > 0)) {
+    const res = resolveLocation({ name: `${destination} Airport`, location: `${destination} International Airport`, destination });
+    if (res) {
+      airportCoords = { latitude: res.latitude, longitude: res.longitude };
+    }
+  }
 
-  for (const day of days) {
+  const dailyMetrics: DailyRouteMetrics[] = [];
+  const totalDays = days.length;
+
+  for (let idx = 0; idx < totalDays; idx++) {
+    const day = days[idx];
+    const isArrivalDay = idx === 0 && Boolean(airportCoords);
+    const isDepartureDay = idx === totalDays - 1 && totalDays > 1 && Boolean(airportCoords);
+
     const dayMetrics = await calculateDayRouteMetrics(
       day.dayNumber,
       day.activities || [],
       destination,
       mode,
-      hotelCoords
+      hotelCoords,
+      airportCoords,
+      { isArrivalDay, isDepartureDay }
     );
     dailyMetrics.push(dayMetrics);
   }
 
   let totalDistanceKm: number | null = 0;
+  let totalRoadKm: number | null = 0;
+  let totalStraightLineKm: number | null = 0;
   let totalTravelMinutes: number | null = 0;
+  let totalStaticTravelMinutes: number | null = 0;
+  let totalTrafficTravelMinutes: number | null = null;
   let totalBacktrackingDistanceKm: number | null = 0;
   let totalSegments = 0;
   let calculatedSegments = 0;
   let completeCount = 0;
+  let tripDataStatus: RouteDataStatus = 'live';
 
   dailyMetrics.forEach(d => {
     if (d.totalDistanceKm !== null) totalDistanceKm = (totalDistanceKm || 0) + d.totalDistanceKm;
+    if (d.roadDistanceKm !== null) totalRoadKm = (totalRoadKm || 0) + d.roadDistanceKm;
+    if (d.straightLineDistanceKm !== null) totalStraightLineKm = (totalStraightLineKm || 0) + d.straightLineDistanceKm;
     if (d.totalTravelMinutes !== null) totalTravelMinutes = (totalTravelMinutes || 0) + d.totalTravelMinutes;
+    if (d.staticTravelTimeMinutes !== null) totalStaticTravelMinutes = (totalStaticTravelMinutes || 0) + d.staticTravelTimeMinutes;
+    if (d.trafficAwareTravelTimeMinutes !== null && d.trafficAwareTravelTimeMinutes !== undefined) {
+      totalTrafficTravelMinutes = (totalTrafficTravelMinutes || 0) + d.trafficAwareTravelTimeMinutes;
+    }
     if (d.backtrackingDistanceKm !== null) {
       totalBacktrackingDistanceKm = (totalBacktrackingDistanceKm || 0) + d.backtrackingDistanceKm;
     }
     totalSegments += d.segmentCount;
     calculatedSegments += d.segments.filter(s => s.availability === 'calculated').length;
     if (d.availability === 'complete') completeCount++;
+    if (d.dataStatus === 'unavailable') tripDataStatus = 'unavailable';
+    else if (d.dataStatus === 'fallback' && tripDataStatus !== 'unavailable') tripDataStatus = 'fallback';
+    else if (d.dataStatus === 'cached' && tripDataStatus === 'live') tripDataStatus = 'cached';
   });
 
   const daysCount = Math.max(1, dailyMetrics.length);
@@ -557,7 +749,6 @@ export async function calculateTripRouteMetrics(
   const avgDailyTravelMinutes = totalTravelMinutes !== null ? Math.round(totalTravelMinutes / daysCount) : null;
   const totalTravelHours = totalTravelMinutes !== null ? Math.round((totalTravelMinutes / 60) * 10) / 10 : null;
 
-  // Overall Trip Route Efficiency Score: weighted average of daily scores
   let efficiencySum = 0;
   dailyMetrics.forEach(d => {
     efficiencySum += d.routeEfficiencyScore || 85;
@@ -573,7 +764,11 @@ export async function calculateTripRouteMetrics(
 
   return {
     totalDistanceKm: totalDistanceKm !== null ? Math.round(totalDistanceKm * 10) / 10 : null,
+    roadDistanceKm: totalRoadKm !== null ? Math.round(totalRoadKm * 10) / 10 : null,
+    straightLineDistanceKm: totalStraightLineKm !== null ? Math.round(totalStraightLineKm * 10) / 10 : null,
     totalTravelMinutes,
+    staticTravelTimeMinutes: totalStaticTravelMinutes,
+    trafficAwareTravelTimeMinutes: totalTrafficTravelMinutes,
     totalTravelHours,
     averageDailyDistanceKm: avgDailyDistanceKm,
     averageDailyTravelMinutes: avgDailyTravelMinutes,
@@ -581,91 +776,67 @@ export async function calculateTripRouteMetrics(
     routeEfficiencyScore: overallEfficiency,
     days: dailyMetrics,
     availability,
+    dataStatus: tripDataStatus,
     totalSegmentsCount: totalSegments,
     calculatedSegmentsCount: calculatedSegments,
     distanceType: 'road',
-    provider: 'Travelia Authoritative Route Engine'
+    provider: 'Travelia Authoritative Route Engine',
+    retrievedAt
   };
 }
 
 /**
- * Synchronous Day Route Metrics Calculator (uses factual coordinates and Haversine distance).
- * Used when callers require immediate synchronous execution without external network latency.
- * Explicitly marks distanceType as 'straight_line' and does not pretend to be road routing.
+ * Synchronous Day Route Metrics Calculator (uses factual coordinates & fast Haversine straight-line distance).
+ * Strictly marks distanceType as 'straight_line' and dataStatus as 'fallback'.
  */
 export function calculateSyncDayRouteMetrics(
   dayNumber: number,
   activities: RouteActivityInput[],
   destination: string,
   mode: TravelMode = 'driving',
-  hotelCoords?: Coordinates
+  hotelCoords?: Coordinates,
+  airportCoords?: Coordinates,
+  options?: { isArrivalDay?: boolean; isDepartureDay?: boolean }
 ): DailyRouteMetrics {
-  const { resolvedActivities, resolvedHotel, availability } = resolveDayCoordinates(
+  const { resolvedActivities, resolvedHotel, resolvedAirport, availability } = resolveDayCoordinates(
     activities,
     destination,
-    hotelCoords
+    hotelCoords,
+    airportCoords
   );
+
+  const retrievedAt = new Date().toISOString();
 
   if (resolvedActivities.length === 0) {
     return {
       day: dayNumber,
       totalDistanceKm: 0,
-      totalTravelMinutes: 0,
+      roadDistanceKm: null,
       straightLineDistanceKm: 0,
+      totalTravelMinutes: 0,
+      staticTravelTimeMinutes: 0,
+      trafficAwareTravelTimeMinutes: null,
       segmentCount: 0,
       segments: [],
       backtrackingDistanceKm: 0,
       backtrackingIncidents: [],
       routeEfficiencyScore: 100,
       availability: 'complete',
+      dataStatus: 'fallback',
+      provider: 'Travelia Synchronous Route Engine (Haversine)',
       conflicts: [],
       openingHourViolations: []
     };
   }
 
-  interface StopItem {
-    id: string;
-    name: string;
-    coords: Coordinates | null;
-    time?: string;
-    durationMinutes?: number;
-    openingHours?: string;
-    isHotel?: boolean;
-  }
-
-  const stops: StopItem[] = [];
-
-  if (resolvedHotel) {
-    stops.push({
-      id: `hotel-start-day-${dayNumber}`,
-      name: `${destination} Base Hotel`,
-      coords: resolvedHotel,
-      time: '08:30 AM',
-      isHotel: true
-    });
-  }
-
-  resolvedActivities.forEach(act => {
-    stops.push({
-      id: act.id,
-      name: act.name,
-      coords: act.resolvedCoords,
-      time: act.time,
-      durationMinutes: act.durationMinutes || 90,
-      openingHours: act.openingHours,
-      isHotel: false
-    });
-  });
-
-  if (resolvedHotel) {
-    stops.push({
-      id: `hotel-return-day-${dayNumber}`,
-      name: `Return to ${destination} Base Hotel`,
-      coords: resolvedHotel,
-      time: '09:30 PM',
-      isHotel: true
-    });
-  }
+  const stops = buildDayStopSequence(
+    dayNumber,
+    resolvedActivities,
+    destination,
+    resolvedHotel,
+    resolvedAirport,
+    options
+  );
 
   const speeds: Record<TravelMode, number> = {
     driving: 30,
@@ -693,10 +864,17 @@ export function calculateSyncDayRouteMetrics(
         toName: to.name,
         fromCoords: from.coords,
         toCoords: to.coords,
+        straightLineDistanceKm: null,
+        roadDistanceKm: null,
         distanceKm: null,
         travelTimeMinutes: null,
+        staticTravelTimeMinutes: null,
+        trafficAwareTravelTimeMinutes: null,
         distanceType: 'straight_line',
         mode,
+        provider: 'unresolved_coordinates',
+        retrievedAt,
+        dataStatus: 'unavailable',
         availability: 'unavailable',
         aiTip: 'Exact coordinates unavailable for this transit leg.'
       });
@@ -716,14 +894,21 @@ export function calculateSyncDayRouteMetrics(
       toName: to.name,
       fromCoords: from.coords,
       toCoords: to.coords,
+      straightLineDistanceKm: distKm,
+      roadDistanceKm: null, // Strictly null for straight-line calculations
       distanceKm: distKm,
       travelTimeMinutes: durationMin,
+      staticTravelTimeMinutes: durationMin,
+      trafficAwareTravelTimeMinutes: null,
       distanceType: 'straight_line',
       mode,
       geometry: [
         [from.coords.latitude, from.coords.longitude],
         [to.coords.latitude, to.coords.longitude]
       ],
+      provider: 'haversine_straight_line',
+      retrievedAt,
+      dataStatus: 'fallback',
       availability: 'calculated',
       aiTip: `Straight-line corridor via ${mode}: ${distKm} km, ~${durationMin} mins.`
     });
@@ -748,14 +933,19 @@ export function calculateSyncDayRouteMetrics(
   return {
     day: dayNumber,
     totalDistanceKm: hasMissingCoords && totalDistanceKm === 0 ? null : Math.round(totalDistanceKm * 10) / 10,
-    totalTravelMinutes: hasMissingCoords && totalTravelMinutes === 0 ? null : totalTravelMinutes,
+    roadDistanceKm: null,
     straightLineDistanceKm: Math.round(totalDistanceKm * 10) / 10,
+    totalTravelMinutes: hasMissingCoords && totalTravelMinutes === 0 ? null : totalTravelMinutes,
+    staticTravelTimeMinutes: hasMissingCoords && totalTravelMinutes === 0 ? null : totalTravelMinutes,
+    trafficAwareTravelTimeMinutes: null,
     segmentCount: segments.length,
     segments,
     backtrackingDistanceKm,
     backtrackingIncidents,
     routeEfficiencyScore,
     availability: hasMissingCoords ? (segments.some(s => s.availability === 'calculated') ? 'partial' : 'unavailable') : 'complete',
+    dataStatus: hasMissingCoords ? 'unavailable' : 'fallback',
+    provider: 'Travelia Synchronous Route Engine (Haversine)',
     conflicts,
     openingHourViolations
   };
@@ -773,11 +963,14 @@ export function calculateSyncTripRouteMetrics(
     }>;
     hotels?: Array<{ name: string; location?: string; selected?: boolean; coords?: Coordinates }>;
     mode?: TravelMode;
+    airportCoords?: Coordinates;
+    existingBookings?: { flights?: any; hotel?: any };
   }
 ): TripRouteMetrics {
   const days = trip.itinerary || [];
   const destination = trip.destination || 'Destination';
   const mode = trip.mode || 'driving';
+  const retrievedAt = new Date().toISOString();
 
   let hotelCoords: Coordinates | undefined = undefined;
   if (trip.hotels && trip.hotels.length > 0) {
@@ -792,17 +985,31 @@ export function calculateSyncTripRouteMetrics(
     }
   }
 
-  const dailyMetrics: DailyRouteMetrics[] = days.map(day =>
-    calculateSyncDayRouteMetrics(
+  let airportCoords: Coordinates | undefined = trip.airportCoords;
+  if (!airportCoords && (trip.existingBookings?.flights || days.length > 0)) {
+    const res = resolveLocation({ name: `${destination} Airport`, location: `${destination} International Airport`, destination });
+    if (res) {
+      airportCoords = { latitude: res.latitude, longitude: res.longitude };
+    }
+  }
+
+  const totalDays = days.length;
+  const dailyMetrics: DailyRouteMetrics[] = days.map((day, idx) => {
+    const isArrivalDay = idx === 0 && Boolean(airportCoords);
+    const isDepartureDay = idx === totalDays - 1 && totalDays > 1 && Boolean(airportCoords);
+    return calculateSyncDayRouteMetrics(
       day.dayNumber,
       day.activities || [],
       destination,
       mode,
-      hotelCoords
-    )
-  );
+      hotelCoords,
+      airportCoords,
+      { isArrivalDay, isDepartureDay }
+    );
+  });
 
   let totalDistanceKm: number | null = 0;
+  let totalStraightLineKm: number | null = 0;
   let totalTravelMinutes: number | null = 0;
   let totalBacktrackingDistanceKm: number | null = 0;
   let totalSegments = 0;
@@ -811,6 +1018,7 @@ export function calculateSyncTripRouteMetrics(
 
   dailyMetrics.forEach(d => {
     if (d.totalDistanceKm !== null) totalDistanceKm = (totalDistanceKm || 0) + d.totalDistanceKm;
+    if (d.straightLineDistanceKm !== null) totalStraightLineKm = (totalStraightLineKm || 0) + d.straightLineDistanceKm;
     if (d.totalTravelMinutes !== null) totalTravelMinutes = (totalTravelMinutes || 0) + d.totalTravelMinutes;
     if (d.backtrackingDistanceKm !== null) {
       totalBacktrackingDistanceKm = (totalBacktrackingDistanceKm || 0) + d.backtrackingDistanceKm;
@@ -840,7 +1048,11 @@ export function calculateSyncTripRouteMetrics(
 
   return {
     totalDistanceKm: totalDistanceKm !== null ? Math.round(totalDistanceKm * 10) / 10 : null,
+    roadDistanceKm: null,
+    straightLineDistanceKm: totalStraightLineKm !== null ? Math.round(totalStraightLineKm * 10) / 10 : null,
     totalTravelMinutes,
+    staticTravelTimeMinutes: totalTravelMinutes,
+    trafficAwareTravelTimeMinutes: null,
     totalTravelHours,
     averageDailyDistanceKm: avgDailyDistanceKm,
     averageDailyTravelMinutes: avgDailyTravelMinutes,
@@ -848,17 +1060,37 @@ export function calculateSyncTripRouteMetrics(
     routeEfficiencyScore: overallEfficiency,
     days: dailyMetrics,
     availability,
+    dataStatus: 'fallback',
     totalSegmentsCount: totalSegments,
     calculatedSegmentsCount: calculatedSegments,
     distanceType: 'straight_line',
-    provider: 'Travelia Authoritative Route Engine (Haversine)'
+    provider: 'Travelia Synchronous Route Engine (Haversine)',
+    retrievedAt
   };
 }
 
 /**
- * Optimizes a day's activities by testing valid sequence orderings (TSP / 2-Opt)
+ * Result structure for day route optimization.
+ */
+export interface OptimizeDayRouteResult {
+  originalMetrics: DailyRouteMetrics;
+  optimizedMetrics: DailyRouteMetrics;
+  reorderedActivities: RouteActivityInput[];
+  beforeDistanceKm: number;
+  afterDistanceKm: number;
+  distanceSavedKm: number;
+  beforeTravelMinutes: number;
+  afterTravelMinutes: number;
+  travelTimeSavedMinutes: number;
+  beforeConflictCount: number;
+  afterConflictCount: number;
+  explanation: string;
+}
+
+/**
+ * Optimizes a day's activities by testing sequence orderings (TSP / 2-Opt)
  * strictly respecting user constraints (mustVisit, avoid, fixed times, opening hours).
- * Returns both original and optimized daily route metrics with deterministic savings.
+ * Returns exact before/after metrics with zero manufactured improvement.
  */
 export async function optimizeDayRoute(
   dayNumber: number,
@@ -866,43 +1098,49 @@ export async function optimizeDayRoute(
   destination: string,
   mode: TravelMode = 'driving',
   constraints: RouteOptimizationConstraint = {},
-  hotelCoords?: Coordinates
-): Promise<{
-  originalMetrics: DailyRouteMetrics;
-  optimizedMetrics: DailyRouteMetrics;
-  reorderedActivities: RouteActivityInput[];
-  distanceSavedKm: number;
-  travelTimeSavedMinutes: number;
-  explanation: string;
-}> {
-  // 1. Calculate baseline route metrics
+  hotelCoords?: Coordinates,
+  airportCoords?: Coordinates
+): Promise<OptimizeDayRouteResult> {
   const originalMetrics = await calculateDayRouteMetrics(
     dayNumber,
     activities,
     destination,
     mode,
-    hotelCoords
+    hotelCoords,
+    airportCoords
   );
 
-  // If <= 2 activities, sequence cannot be reordered to reduce intermediate travel
-  if (activities.length <= 2) {
+  const origDist = originalMetrics.totalDistanceKm || 0;
+  const origMins = originalMetrics.totalTravelMinutes || 0;
+  const origConflicts = originalMetrics.conflicts.length;
+
+  // 1. Filter out activities matching avoid constraint, but NEVER drop mustVisit
+  let candidateActivities = [...activities];
+  if (constraints.avoid && constraints.avoid.length > 0) {
+    candidateActivities = candidateActivities.filter(a => {
+      if (a.mustVisit || constraints.mustVisit?.includes(a.id)) return true;
+      return !constraints.avoid?.includes(a.id);
+    });
+  }
+
+  if (candidateActivities.length <= 2) {
     return {
       originalMetrics,
       optimizedMetrics: originalMetrics,
-      reorderedActivities: activities,
+      reorderedActivities: candidateActivities,
+      beforeDistanceKm: origDist,
+      afterDistanceKm: origDist,
       distanceSavedKm: 0,
+      beforeTravelMinutes: origMins,
+      afterTravelMinutes: origMins,
       travelTimeSavedMinutes: 0,
+      beforeConflictCount: origConflicts,
+      afterConflictCount: origConflicts,
       explanation: 'Activities are already in single or direct sequence; no shorter route exists.'
     };
   }
 
-  // 2. Filter activities based on constraints
-  let candidateActivities = [...activities];
-  if (constraints.avoid && constraints.avoid.length > 0) {
-    candidateActivities = candidateActivities.filter(a => !constraints.avoid?.includes(a.id));
-  }
-
-  // Identify fixed-position activities (e.g. fixedTimes or fixed meal slots)
+  // 2. Identify fixed-position activities
   const fixedPositions = new Map<number, RouteActivityInput>();
   candidateActivities.forEach((act, idx) => {
     if (act.isFixedTime || (constraints.fixedTimes && constraints.fixedTimes[act.id])) {
@@ -910,7 +1148,7 @@ export async function optimizeDayRoute(
     }
   });
 
-  // 3. Coordinate pre-fetch for fast distance matrix
+  // 3. Resolve coordinates
   const resolved = candidateActivities.map(a => {
     const res = resolveLocation({
       name: a.name,
@@ -924,29 +1162,32 @@ export async function optimizeDayRoute(
     };
   });
 
-  // If any candidate has missing coordinates, route optimization cannot guarantee a genuine reduction
   const allResolved = resolved.every(r => r.coords !== null);
   if (!allResolved) {
     return {
       originalMetrics,
       optimizedMetrics: originalMetrics,
-      reorderedActivities: activities,
+      reorderedActivities: candidateActivities,
+      beforeDistanceKm: origDist,
+      afterDistanceKm: origDist,
       distanceSavedKm: 0,
+      beforeTravelMinutes: origMins,
+      afterTravelMinutes: origMins,
       travelTimeSavedMinutes: 0,
+      beforeConflictCount: origConflicts,
+      afterConflictCount: origConflicts,
       explanation: 'Some activity locations could not be verified; route reordering disabled to prevent inaccurate routing.'
     };
   }
 
-  // 4. Generate candidate permutations
-  // For <= 7 stops: exhaustive valid permutation search
-  // For > 7 stops: Greedy Nearest Neighbor + 2-Opt local search
+
+  // 4. Candidate Permutation / 2-Opt Optimization
   let bestOrder: RouteActivityInput[] = [...candidateActivities];
-  let bestDistance = originalMetrics.totalDistanceKm || Infinity;
+  let bestDistance = origDist || Infinity;
 
   const validResolved = resolved.map(r => ({ ...r, coords: r.coords! }));
 
   if (validResolved.length <= 7) {
-    // Permutation generator that respects fixed positions
     const freeItems = validResolved.filter((_, idx) => !fixedPositions.has(idx));
 
     function permute(arr: typeof freeItems): Array<typeof freeItems> {
@@ -978,7 +1219,15 @@ export async function optimizeDayRoute(
         }
       }
 
-      // Quick Haversine distance check for candidate
+      // Check opening hours if requested
+      if (constraints.respectOpeningHours) {
+        const openingViolations = detectOpeningHourViolations(
+          candidateSequence.map(a => ({ id: a.id, name: a.name, time: a.time, openingHours: a.openingHours })),
+          dayNumber
+        );
+        if (openingViolations.length > 0) continue;
+      }
+
       let candDist = 0;
       for (let i = 0; i < candidateSequence.length - 1; i++) {
         const c1 = validResolved.find(r => r.activity.id === candidateSequence[i].id)!.coords;
@@ -992,7 +1241,7 @@ export async function optimizeDayRoute(
       }
     }
   } else {
-    // Greedy Nearest Neighbor
+    // Greedy Nearest Neighbor + 2-Opt
     const unvisited = [...validResolved];
     const ordered: typeof validResolved = [];
     let currentCoords = hotelCoords || validResolved[0].coords;
@@ -1014,7 +1263,6 @@ export async function optimizeDayRoute(
       currentCoords = next.coords;
     }
 
-    // 2-Opt local search
     let improved = true;
     let iterations = 0;
     while (improved && iterations < 25) {
@@ -1042,31 +1290,36 @@ export async function optimizeDayRoute(
     bestOrder = ordered.map(o => o.activity);
   }
 
-  // 5. Calculate authoritative metrics for optimized candidate
+  // 5. Calculate authoritative post-optimization metrics
   const optimizedMetrics = await calculateDayRouteMetrics(
     dayNumber,
     bestOrder,
     destination,
     mode,
-    hotelCoords
+    hotelCoords,
+    airportCoords
   );
 
-  const origDist = originalMetrics.totalDistanceKm || 0;
   const optDist = optimizedMetrics.totalDistanceKm || 0;
-  const origMins = originalMetrics.totalTravelMinutes || 0;
   const optMins = optimizedMetrics.totalTravelMinutes || 0;
+  const optConflicts = optimizedMetrics.conflicts.length;
 
-  // Genuine savings: only report if candidate is actually shorter!
-  if (optDist < origDist - 0.2) {
-    const distanceSavedKm = Math.round((origDist - optDist) * 10) / 10;
+  if (optDist < origDist - 0.2 || optMins < origMins - 2) {
+    const distanceSavedKm = Math.max(0, Math.round((origDist - optDist) * 10) / 10);
     const travelTimeSavedMinutes = Math.max(0, origMins - optMins);
 
     return {
       originalMetrics,
       optimizedMetrics,
       reorderedActivities: bestOrder,
+      beforeDistanceKm: origDist,
+      afterDistanceKm: optDist,
       distanceSavedKm,
+      beforeTravelMinutes: origMins,
+      afterTravelMinutes: optMins,
       travelTimeSavedMinutes,
+      beforeConflictCount: origConflicts,
+      afterConflictCount: optConflicts,
       explanation: `Optimized Day 0${dayNumber} waypoint sequence along a linear transit corridor, eliminating intermediate backtracking and saving ${distanceSavedKm} km and ${travelTimeSavedMinutes} mins in transit.`
     };
   }
@@ -1075,12 +1328,19 @@ export async function optimizeDayRoute(
   return {
     originalMetrics,
     optimizedMetrics: originalMetrics,
-    reorderedActivities: activities,
+    reorderedActivities: candidateActivities,
+    beforeDistanceKm: origDist,
+    afterDistanceKm: origDist,
     distanceSavedKm: 0,
+    beforeTravelMinutes: origMins,
+    afterTravelMinutes: origMins,
     travelTimeSavedMinutes: 0,
+    beforeConflictCount: origConflicts,
+    afterConflictCount: origConflicts,
     explanation: 'No measurable route improvement found. Current activity sequence is already optimal.'
   };
 }
+
 
 /**
  * Synchronous version of Day Route Optimization.
@@ -1091,37 +1351,45 @@ export function optimizeDayRouteSync(
   destination: string,
   mode: TravelMode = 'driving',
   constraints: RouteOptimizationConstraint = {},
-  hotelCoords?: Coordinates
-): {
-  originalMetrics: DailyRouteMetrics;
-  optimizedMetrics: DailyRouteMetrics;
-  reorderedActivities: RouteActivityInput[];
-  distanceSavedKm: number;
-  travelTimeSavedMinutes: number;
-  explanation: string;
-} {
+  hotelCoords?: Coordinates,
+  airportCoords?: Coordinates
+): OptimizeDayRouteResult {
   const originalMetrics = calculateSyncDayRouteMetrics(
     dayNumber,
     activities,
     destination,
     mode,
-    hotelCoords
+    hotelCoords,
+    airportCoords
   );
 
-  if (activities.length <= 2) {
-    return {
-      originalMetrics,
-      optimizedMetrics: originalMetrics,
-      reorderedActivities: activities,
-      distanceSavedKm: 0,
-      travelTimeSavedMinutes: 0,
-      explanation: 'Activities are already in single or direct sequence; no shorter route exists.'
-    };
-  }
+  const origDist = originalMetrics.totalDistanceKm || 0;
+  const origMins = originalMetrics.totalTravelMinutes || 0;
+  const origConflicts = originalMetrics.conflicts.length;
 
   let candidateActivities = [...activities];
   if (constraints.avoid && constraints.avoid.length > 0) {
-    candidateActivities = candidateActivities.filter(a => !constraints.avoid?.includes(a.id));
+    candidateActivities = candidateActivities.filter(a => {
+      if (a.mustVisit || constraints.mustVisit?.includes(a.id)) return true;
+      return !constraints.avoid?.includes(a.id);
+    });
+  }
+
+  if (candidateActivities.length <= 2) {
+    return {
+      originalMetrics,
+      optimizedMetrics: originalMetrics,
+      reorderedActivities: candidateActivities,
+      beforeDistanceKm: origDist,
+      afterDistanceKm: origDist,
+      distanceSavedKm: 0,
+      beforeTravelMinutes: origMins,
+      afterTravelMinutes: origMins,
+      travelTimeSavedMinutes: 0,
+      beforeConflictCount: origConflicts,
+      afterConflictCount: origConflicts,
+      explanation: 'Activities are already in single or direct sequence; no shorter route exists.'
+    };
   }
 
   const fixedPositions = new Map<number, RouteActivityInput>();
@@ -1149,15 +1417,22 @@ export function optimizeDayRouteSync(
     return {
       originalMetrics,
       optimizedMetrics: originalMetrics,
-      reorderedActivities: activities,
+      reorderedActivities: candidateActivities,
+      beforeDistanceKm: origDist,
+      afterDistanceKm: origDist,
       distanceSavedKm: 0,
+      beforeTravelMinutes: origMins,
+      afterTravelMinutes: origMins,
       travelTimeSavedMinutes: 0,
+      beforeConflictCount: origConflicts,
+      afterConflictCount: origConflicts,
       explanation: 'Some activity locations could not be verified; route reordering disabled to prevent inaccurate routing.'
     };
   }
 
+
   let bestOrder: RouteActivityInput[] = [...candidateActivities];
-  let bestDistance = originalMetrics.totalDistanceKm || Infinity;
+  let bestDistance = origDist || Infinity;
 
   const validResolved = resolved.map(r => ({ ...r, coords: r.coords! }));
 
@@ -1259,24 +1534,30 @@ export function optimizeDayRouteSync(
     bestOrder,
     destination,
     mode,
-    hotelCoords
+    hotelCoords,
+    airportCoords
   );
 
-  const origDist = originalMetrics.totalDistanceKm || 0;
   const optDist = optimizedMetrics.totalDistanceKm || 0;
-  const origMins = originalMetrics.totalTravelMinutes || 0;
   const optMins = optimizedMetrics.totalTravelMinutes || 0;
+  const optConflicts = optimizedMetrics.conflicts.length;
 
-  if (optDist < origDist - 0.2) {
-    const distanceSavedKm = Math.round((origDist - optDist) * 10) / 10;
+  if (optDist < origDist - 0.2 || optMins < origMins - 2) {
+    const distanceSavedKm = Math.max(0, Math.round((origDist - optDist) * 10) / 10);
     const travelTimeSavedMinutes = Math.max(0, origMins - optMins);
 
     return {
       originalMetrics,
       optimizedMetrics,
       reorderedActivities: bestOrder,
+      beforeDistanceKm: origDist,
+      afterDistanceKm: optDist,
       distanceSavedKm,
+      beforeTravelMinutes: origMins,
+      afterTravelMinutes: optMins,
       travelTimeSavedMinutes,
+      beforeConflictCount: origConflicts,
+      afterConflictCount: optConflicts,
       explanation: `Optimized Day 0${dayNumber} waypoint sequence along a linear transit corridor, eliminating intermediate backtracking and saving ${distanceSavedKm} km and ${travelTimeSavedMinutes} mins in transit.`
     };
   }
@@ -1284,32 +1565,40 @@ export function optimizeDayRouteSync(
   return {
     originalMetrics,
     optimizedMetrics: originalMetrics,
-    reorderedActivities: activities,
+    reorderedActivities: candidateActivities,
+    beforeDistanceKm: origDist,
+    afterDistanceKm: origDist,
     distanceSavedKm: 0,
+    beforeTravelMinutes: origMins,
+    afterTravelMinutes: origMins,
     travelTimeSavedMinutes: 0,
+    beforeConflictCount: origConflicts,
+    afterConflictCount: origConflicts,
     explanation: 'No measurable route improvement found. Current activity sequence is already optimal.'
   };
+
 }
 
 /**
  * Compares two TripRouteMetrics deterministically.
+ * Single source of truth for before/after comparison.
  */
 export function compareTripRoutes(
   before: TripRouteMetrics,
   after: TripRouteMetrics
 ): RouteComparison {
-  const distBefore = before.totalDistanceKm;
-  const distAfter = after.totalDistanceKm;
-  const timeBefore = before.totalTravelMinutes;
-  const timeAfter = after.totalTravelMinutes;
+  const distBefore = before.totalDistanceKm ?? 0;
+  const distAfter = after.totalDistanceKm ?? 0;
+  const timeBefore = before.totalTravelMinutes ?? 0;
+  const timeAfter = after.totalTravelMinutes ?? 0;
 
-  const distanceSavedKm = (distBefore !== null && distAfter !== null)
+  const distanceSavedKm = distBefore > distAfter
     ? Math.max(0, Math.round((distBefore - distAfter) * 10) / 10)
-    : null;
+    : 0;
 
-  const travelTimeSavedMinutes = (timeBefore !== null && timeAfter !== null)
+  const travelTimeSavedMinutes = timeBefore > timeAfter
     ? Math.max(0, timeBefore - timeAfter)
-    : null;
+    : 0;
 
   const effBefore = before.routeEfficiencyScore;
   const effAfter = after.routeEfficiencyScore;
@@ -1317,13 +1606,26 @@ export function compareTripRoutes(
     ? effAfter - effBefore
     : null;
 
+  const conflictsBefore = before.days.flatMap(d => d.conflicts).length;
+  const conflictsAfter = after.days.flatMap(d => d.conflicts).length;
+
   return {
+    beforeDistanceKm: distBefore,
+    afterDistanceKm: distAfter,
+    distanceSavedKm,
+
+    beforeTravelMinutes: timeBefore,
+    afterTravelMinutes: timeAfter,
+    travelTimeSavedMinutes,
+
+    beforeConflictCount: conflictsBefore,
+    afterConflictCount: conflictsAfter,
+
+    // Backward compatibility aliases
     distanceBeforeKm: distBefore,
     distanceAfterKm: distAfter,
-    distanceSavedKm,
     travelTimeBeforeMinutes: timeBefore,
     travelTimeAfterMinutes: timeAfter,
-    travelTimeSavedMinutes,
     backtrackingBeforeKm: before.totalBacktrackingDistanceKm,
     backtrackingAfterKm: after.totalBacktrackingDistanceKm,
     efficiencyScoreBefore: effBefore,
@@ -1347,7 +1649,7 @@ export function clusterActivitiesGeographically(
   const resolved = activities.map(a => ({
     activity: a,
     coords: resolveLocation({ name: a.name, location: a.location, destination, existingCoords: a.coords })
-  })).filter(r => r.coords !== null) as Array<{ activity: RouteActivityInput; coords: ResolvedLocation }>;
+  })).filter(r => r.coords !== null) as Array<{ activity: RouteActivityInput; coords: { latitude: number; longitude: number } }>;
 
   const clusters: Array<{ clusterId: string; centroid: Coordinates; activities: RouteActivityInput[] }> = [];
 

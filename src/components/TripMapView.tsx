@@ -313,32 +313,33 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
     if (polylineGlowRef.current) map.removeLayer(polylineGlowRef.current);
     if (polylineFlowRef.current) map.removeLayer(polylineFlowRef.current);
 
-    // 3. Draw Route Polyline (Exact Road Geometry from OSRM, or Aesthetic Bézier Arcs)
-    const { allCurvedCoords, legCurves } = generateCurvedRoute(waypoints);
-    curvedLegsRef.current = legCurves;
-    const activeCoords = (roadPolyline && roadPolyline.length > 2) ? roadPolyline : allCurvedCoords;
+    // 3. Draw Route Polyline (Exact Road Geometry from authoritative route engine, or straight-line corridor)
+    const isRealRoad = Boolean(roadPolyline && roadPolyline.length > 2);
+    const straightCoords: [number, number][] = waypoints.map(w => w.coords);
+    const activeCoords = isRealRoad ? roadPolyline! : straightCoords;
 
-    // Layer 1: Soft Ambient Neon Glow
+    // Layer 1: Ambient Neon Glow
     polylineGlowRef.current = L.polyline(activeCoords, {
-      color: '#22C55E',
-      weight: 12,
-      opacity: 0.28,
+      color: isRealRoad ? '#22C55E' : '#94A3B8',
+      weight: 10,
+      opacity: isRealRoad ? 0.28 : 0.15,
       lineCap: 'round',
       lineJoin: 'round',
       className: 'aesthetic-ambient-glow'
     }).addTo(map);
 
-    // Layer 2: Core Vibrant Lime Accent Line
+    // Layer 2: Core Route Line
     polylineRef.current = L.polyline(activeCoords, {
-      color: '#A3E635',
-      weight: 4.5,
-      opacity: 0.95,
+      color: isRealRoad ? '#A3E635' : '#64748B',
+      weight: isRealRoad ? 4.5 : 2.5,
+      opacity: isRealRoad ? 0.95 : 0.75,
+      dashArray: isRealRoad ? undefined : '6, 10',
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(map);
 
-    // Layer 3: Flowing Animated Energy Pulse Line
-    polylineFlowRef.current = L.polyline(allCurvedCoords, {
+    // Layer 3: Energy Pulse Line along the authentic active coords
+    polylineFlowRef.current = L.polyline(activeCoords, {
       color: '#FFFFFF',
       weight: 2,
       opacity: 0.85,
@@ -347,6 +348,7 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
       lineJoin: 'round',
       className: 'aesthetic-travel-path'
     }).addTo(map);
+
 
     // 4. Create custom numbered markers
     const newMarkers: L.Marker[] = [];
@@ -692,14 +694,20 @@ export const TripMapView: React.FC<TripMapViewProps> = ({
             {roadPolyline && roadPolyline.length > 2 ? (
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                OSRM Road Routing
+                {authoritativeMetrics?.provider?.includes('google') ? 'Live Google Routes API' : 'Real Road Geometry (OSRM)'}
+              </span>
+            ) : authoritativeMetrics?.dataStatus === 'unavailable' ? (
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-700" />
+                Route Geometry Unavailable
               </span>
             ) : (
-              <span className="px-2.5 py-0.5 rounded-full bg-[#E5ECE0] text-[#344E27] text-xs font-bold flex items-center gap-1">
-                <Compass className="w-3 h-3 text-[#344E27]" />
-                GPS Vector Map
+              <span className="px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-700 text-xs font-bold flex items-center gap-1">
+                <Compass className="w-3 h-3 text-neutral-600" />
+                Straight-Line Corridor (Road geometry unavailable)
               </span>
             )}
+
           </div>
           <p className="text-xs text-neutral-500 mt-1">
             Visualized daily journey with estimated transit times, leg distances, and intelligent route sequencing for {trip.destination}.

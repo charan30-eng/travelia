@@ -12,6 +12,7 @@
 import { Router, Request, Response } from 'express';
 import { placesService } from '../services/placesService';
 import { PlaceCategory } from '../types/places';
+import { isValidCoordinate, isValidId } from '../middleware/validation';
 
 const router = Router();
 
@@ -32,9 +33,20 @@ router.get('/search', async (req: Request, res: Response) => {
     const query = req.query.query as string | undefined;
     const category = req.query.category as PlaceCategory | undefined;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 15;
-    const latitude = req.query.latitude ? parseFloat(req.query.latitude as string) : undefined;
-    const longitude = req.query.longitude ? parseFloat(req.query.longitude as string) : undefined;
+    
+    let latitude = req.query.latitude ? parseFloat(req.query.latitude as string) : undefined;
+    let longitude = req.query.longitude ? parseFloat(req.query.longitude as string) : undefined;
     const radiusMeters = req.query.radius ? parseFloat(req.query.radius as string) : undefined;
+
+    if (req.query.latitude !== undefined || req.query.longitude !== undefined) {
+      const coordCheck = isValidCoordinate(req.query.latitude, req.query.longitude);
+      if (!coordCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_COORDINATES', message: coordCheck.error }
+        });
+      }
+    }
 
     const response = await placesService.searchPlaces({
       destination,
@@ -45,6 +57,7 @@ router.get('/search', async (req: Request, res: Response) => {
       longitude,
       radiusMeters
     });
+
 
     return res.json(response);
   } catch (err: any) {
@@ -144,6 +157,13 @@ router.get('/photo', async (req: Request, res: Response) => {
 router.get('/:placeId', async (req: Request, res: Response) => {
   try {
     const placeId = req.params.placeId;
+    if (!isValidId(placeId)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_PLACE_ID', message: 'Invalid place ID format.' }
+      });
+    }
+
     const place = await placesService.getPlaceDetails(placeId);
     if (!place) {
       return res.status(404).json({
@@ -151,6 +171,7 @@ router.get('/:placeId', async (req: Request, res: Response) => {
         error: { code: 'PLACE_NOT_FOUND', message: `Place with ID ${placeId} not found` }
       });
     }
+
 
     return res.json({
       success: true,

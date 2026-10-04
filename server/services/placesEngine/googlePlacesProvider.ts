@@ -246,8 +246,11 @@ export class GooglePlacesProvider {
     const photos = this.normalizePhotos(raw.photos);
     const priceLevel = this.normalizePriceLevel(raw.priceLevel);
 
+    const nowISO = new Date().toISOString();
     const place: TraveliaPlace = {
       id: raw.id,
+      source: 'google',
+      sourceId: raw.id,
       providerId: raw.id,
       name: raw.displayName.text,
       category,
@@ -262,9 +265,9 @@ export class GooglePlacesProvider {
       openingHours,
       photos,
       types: Array.isArray(raw.types) ? raw.types : [],
-      source: 'google',
       dataStatus: 'live',
-      fetchedAt: new Date().toISOString()
+      retrievedAt: nowISO,
+      fetchedAt: nowISO
     };
 
     return place;

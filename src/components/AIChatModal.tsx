@@ -30,22 +30,22 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'm1',
     sender: 'ai',
-    text: "Hello! I am Travelia AI, your real-time travel planning copilot powered by Gemini and our deterministic itinerary calculation engines. Ask me to lower costs, balance your schedule, reroute for rain, or explain your Trip Health Score.",
+    text: "Hello! I am Travelia AI, your real-time travel decision & optimization copilot.\n\nI have direct access to Travelia's authoritative engine services:\n• Places (Google Places validation & operating hours)\n• Routes (OSRM road-network transit matrix)\n• Weather (Open-Meteo 16-day forecasts & rain alerts)\n• Budget (Dual-currency itemized cost ledger)\n• Health (7-dimension deterministic scoring)\n• Optimization (Multi-objective Pareto replanner)\n• What-If (Scenario simulations & deltas)\n• Flights (Aviation routes & cabin classes)\n• Currency (Live FX exchange conversions)\n\nAsk me any question or click a domain below to calculate recommendations!",
     timestamp: 'Just now'
   }
 ];
 
 const SUGGESTED_QUESTIONS = [
-  "Make my trip cheaper",
-  "Which day is too busy?",
-  "Make Day 2 more relaxed",
-  "I only have ₹20,000. Adjust my trip",
-  "What happens if I remove my most expensive activity?",
-  "Rain is expected tomorrow. What should I change?",
-  "Why is my Trip Health Score low?",
-  "Keep the beach activities but reduce the cost",
-  "Reduce unnecessary travel",
-  "Explain every change you made"
+  "Explain my Trip Health Score calculation",
+  "What if it rains tomorrow?",
+  "Reduce unnecessary transit travel and backtracking",
+  "Make my trip cheaper without losing top highlights",
+  "Which day is too packed with activities?",
+  "What if I switch my hotel to cut commute time?",
+  "Show budget breakdown in INR and foreign currency",
+  "Verify ratings and hours for my tourist sights",
+  "Check roundtrip flight baggage and connection schedule",
+  "Explain every optimization calculation you performed"
 ];
 
 const LOADING_STATUSES = [
@@ -199,6 +199,32 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({
         >
           <X className="w-5 h-5" />
         </button>
+      </div>
+
+      {/* 9-Domain Engine Intelligence Strip */}
+      <div className="px-4 py-2 bg-neutral-100/70 border-b border-neutral-200/80 flex items-center gap-1.5 overflow-x-auto text-[10px] font-bold">
+        <span className="text-neutral-400 uppercase tracking-wider text-[9px] shrink-0">Engine Tools:</span>
+        {[
+          { label: '📍 Places', query: 'Verify place details, ratings, and operating hours for my trip.' },
+          { label: '🗺️ Routes', query: 'Analyze route efficiency and calculate travel transit times between stops.' },
+          { label: '🌦️ Weather', query: 'Check the 16-day meteorological forecast and rain advisories.' },
+          { label: '💳 Budget', query: 'Audit my itemized budget breakdown across lodging, food, and activities.' },
+          { label: '📊 Health', query: 'Explain the 7-dimension Trip Health Score calculation and recommendations.' },
+          { label: '⚡ Optimize', query: 'Run multi-objective optimization to eliminate backtracking and reduce costs.' },
+          { label: '🔮 What-If', query: 'Simulate a what-if scenario: what if it rains tomorrow?' },
+          { label: '✈️ Flights', query: 'Review roundtrip flight logistics, baggage allowance, and boarding details.' },
+          { label: '💱 Currency', query: 'Explain the exchange rates and dual-currency breakdown for this destination.' }
+        ].map((d) => (
+          <button
+            key={d.label}
+            onClick={() => handleSend(d.query)}
+            disabled={isTyping}
+            className="px-2.5 py-1 rounded-full bg-white hover:bg-[#344E27] text-neutral-700 hover:text-white border border-neutral-200 hover:border-[#344E27] transition-all whitespace-nowrap cursor-pointer shrink-0 disabled:opacity-50"
+            title={`Ask Copilot to analyze ${d.label}`}
+          >
+            {d.label}
+          </button>
+        ))}
       </div>
 
       {/* Messages Scroll Area */}

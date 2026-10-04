@@ -77,19 +77,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
             {/* AI Pill Tag */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E5ECE0] text-[#344E27] text-xs font-bold uppercase tracking-wider mb-6 border border-[#344E27]/15 shadow-2xs">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Next-Generation Travel Operating System</span>
+              <span>AI Travel Decision & Optimization Engine</span>
             </div>
 
-            {/* Massive Geometric All-Caps Headline inspired by Lumora reference */}
-            <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[58px] leading-[1.08] tracking-tight text-[#191919] uppercase mb-6">
-              PLAN YOUR <br />
-              <span className="text-[#344E27]">PERFECT TRIP</span> <br />
-              WITH AI
+            {/* Massive Geometric All-Caps Headline */}
+            <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[54px] leading-[1.08] tracking-tight text-[#191919] uppercase mb-6">
+              AI TRAVEL <br />
+              <span className="text-[#344E27]">DECISION & OPTIMIZATION</span> <br />
+              ENGINE
             </h1>
 
             {/* Supporting Subtext */}
             <p className="text-base sm:text-lg text-neutral-600 leading-relaxed max-w-xl mb-8">
-              Tell us where you want to go. Our AI creates your itinerary, finds stays, discovers experiences, recommends restaurants, and calculates your estimated budget.
+              Travelia is not merely an itinerary planner. It combines Gemini AI reasoning with authoritative route matrix calculation, live Google Places verification, weather forecasting, deterministic trip health scoring, and What-If scenario simulations.
             </p>
 
             {/* CTA Buttons */}
@@ -230,58 +230,154 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </section>
 
-      {/* HOW TRAVELIA AI WORKS */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <span className="text-xs font-bold uppercase tracking-widest text-[#344E27] bg-[#E5ECE0] px-3 py-1 rounded-full border border-[#344E27]/15">
-            Effortless 3-Step Flow
-          </span>
-          <h2 className="font-display font-extrabold text-3xl sm:text-4xl text-[#191919] mt-3">
-            How Travelia AI Works
+      {/* CORE DECISION & OPTIMIZATION ENGINE PIPELINE */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#344E27] bg-[#E5ECE0] px-3.5 py-1.5 rounded-full border border-[#344E27]/20 mb-3">
+            <span className="w-2 h-2 rounded-full bg-[#344E27] animate-pulse"></span>
+            7-Stage Decision Pipeline
+          </div>
+          <h2 className="font-display font-extrabold text-3xl sm:text-4xl text-[#191919]">
+            The Travelia Decision & Optimization Engine
           </h2>
-          <p className="text-neutral-600 text-sm sm:text-base mt-2">
-            Replace dozens of messy browser tabs and spreadsheet calculations with a unified AI planner.
+          <p className="text-neutral-600 text-sm sm:text-base mt-3 leading-relaxed">
+            Unlike standard AI chatbots that output generic suggestions, Travelia runs a rigorous multi-stage engine connecting real-world map networks, live meteorology, verified places, and multi-objective optimization before you make a decision.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          <div className="bg-white rounded-[26px] p-7 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-shadow relative">
-            <div className="w-12 h-12 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-display font-extrabold text-xl mb-5">
-              1
+        {/* 7-Step Pipeline Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-14">
+          {[
+            { step: '01', title: 'PLAN', desc: 'Contextual AI itinerary synthesis', icon: 'Sparkles' },
+            { step: '02', title: 'VERIFY', desc: 'Google Places validation & ratings', icon: 'ShieldCheck' },
+            { step: '03', title: 'CALCULATE', desc: 'OSRM routes & deterministic health', icon: 'Compass' },
+            { step: '04', title: 'OPTIMIZE', desc: 'Pareto waypoint & schedule replanning', icon: 'Layers' },
+            { step: '05', title: 'SIMULATE', desc: 'What-If rain, budget & stay modeling', icon: 'HelpCircle' },
+            { step: '06', title: 'EXPLAIN', desc: 'Transparent mathematical deltas', icon: 'BarChart3' },
+            { step: '07', title: 'APPROVE', desc: 'Traveller review & atomic commit', icon: 'CheckCircle2' },
+          ].map((item, idx) => (
+            <div
+              key={item.title}
+              className={`relative rounded-2xl p-4 border transition-all ${
+                idx === 3 || idx === 4
+                  ? 'bg-[#344E27] text-white border-[#344E27] shadow-md ring-2 ring-[#344E27]/20'
+                  : 'bg-white text-neutral-800 border-[#E5E7EB] hover:border-[#344E27]/40 shadow-2xs'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[10px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded ${
+                  idx === 3 || idx === 4 ? 'bg-white/20 text-white' : 'bg-[#E5ECE0] text-[#344E27]'
+                }`}>
+                  {item.step}
+                </span>
+                {idx < 6 && (
+                  <ArrowRight className={`w-3.5 h-3.5 hidden lg:block ${
+                    idx === 3 || idx === 4 ? 'text-white/60' : 'text-neutral-300'
+                  }`} />
+                )}
+              </div>
+              <h3 className={`font-display font-black text-sm tracking-tight ${
+                idx === 3 || idx === 4 ? 'text-white' : 'text-[#191919]'
+              }`}>
+                {item.title}
+              </h3>
+              <p className={`text-[11px] mt-1 leading-snug ${
+                idx === 3 || idx === 4 ? 'text-white/80' : 'text-neutral-500'
+              }`}>
+                {item.desc}
+              </p>
             </div>
-            <h3 className="font-display font-bold text-xl text-[#191919] mb-2">
-              Enter or Upload Destination
-            </h3>
-            <p className="text-sm text-neutral-600 leading-relaxed">
-              Type your dream city or drag in an Instagram travel photo. Our AI scans landmarks and suggests best travel dates.
+          ))}
+        </div>
+
+        {/* 6 Engine Pillars Grid */}
+        <div className="text-center max-w-2xl mx-auto mb-8">
+          <span className="text-xs font-bold text-[#344E27] tracking-wider uppercase">
+            Intelligence Architecture
+          </span>
+          <h3 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-1">
+            Engineered for Precision & Trust
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-[24px] p-6 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all">
+            <div className="w-11 h-11 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-bold text-lg mb-4">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="font-display font-bold text-lg text-[#191919]">AI Planning</h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Gemini 2.5</span>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed mt-2">
+              Context-aware itinerary generation personalized to traveler archetype, pace preference, dining style, and budget constraints.
             </p>
           </div>
 
-          <div className="bg-white rounded-[26px] p-7 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-shadow relative">
-            <div className="w-12 h-12 rounded-2xl bg-[#344E27] text-white flex items-center justify-center font-display font-extrabold text-xl mb-5">
-              2
+          <div className="bg-white rounded-[24px] p-6 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all">
+            <div className="w-11 h-11 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-bold text-lg mb-4">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <h3 className="font-display font-bold text-xl text-[#191919] mb-2">
-              AI Builds Full Dashboard
-            </h3>
-            <p className="text-sm text-neutral-600 leading-relaxed">
-              Instant custom vertical timeline with hotels, restaurants, tourist attractions, durations, and local tips.
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="font-display font-bold text-lg text-[#191919]">Real Travel Data</h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">Google Places</span>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed mt-2">
+              Authoritative coordinate resolution, verified ratings, photos, operating hours, and location accuracy to eliminate hallucinated stops.
             </p>
           </div>
 
-          <div className="bg-white rounded-[26px] p-7 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-shadow relative">
-            <div className="w-12 h-12 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-display font-extrabold text-xl mb-5">
-              3
+          <div className="bg-white rounded-[24px] p-6 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all">
+            <div className="w-11 h-11 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-bold text-lg mb-4">
+              <Compass className="w-5 h-5" />
             </div>
-            <h3 className="font-display font-bold text-xl text-[#191919] mb-2">
-              Optimize & Track Budget
-            </h3>
-            <p className="text-sm text-neutral-600 leading-relaxed">
-              Dynamically adjust group sizes, stay categories, and dining styles. Save and export your plan with 1-click.
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="font-display font-bold text-lg text-[#191919]">Route Intelligence</h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">OSRM Engine</span>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed mt-2">
+              True road-network distance matrix calculations and commute times that detect inefficient backtracking and excessive commute fatigue.
             </p>
           </div>
 
+          <div className="bg-white rounded-[24px] p-6 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all">
+            <div className="w-11 h-11 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-bold text-lg mb-4">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="font-display font-bold text-lg text-[#191919]">Weather Intelligence</h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">Open-Meteo</span>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed mt-2">
+              Precipitation probability, temperature profiles, and UV tracking that automatically flag outdoor risks and prompt indoor alternatives.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-[24px] p-6 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all">
+            <div className="w-11 h-11 rounded-2xl bg-[#E5ECE0] text-[#344E27] flex items-center justify-center font-bold text-lg mb-4">
+              <Coins className="w-5 h-5" />
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="font-display font-bold text-lg text-[#191919]">Budget Intelligence</h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Dual-FX Matrix</span>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed mt-2">
+              Itemized multi-currency budget tracking across lodging, meals, transit, and activities with real exchange rates and buffer thresholds.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-[24px] p-6 border border-[#E5E7EB] shadow-2xs hover:shadow-md transition-all">
+            <div className="w-11 h-11 rounded-2xl bg-[#344E27] text-white flex items-center justify-center font-bold text-lg mb-4">
+              <Sparkles className="w-5 h-5 text-[#A3B899]" />
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="font-display font-bold text-lg text-[#191919]">What-If Simulation</h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">Deterministic</span>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed mt-2">
+              Instantly simulate real travel disruptions (rain, budget cuts, hotel shifts) with before/after mathematical deltas and 1-click Smart Replan.
+            </p>
+          </div>
         </div>
       </section>
 

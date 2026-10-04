@@ -39,26 +39,28 @@ export interface PlacePhoto {
 
 export interface TraveliaPlace {
   id: string;
-  providerId?: string;
+  source: PlaceSource;
+  sourceId?: string;
+  providerId?: string; // alias for backwards compatibility
   name: string;
   category: PlaceCategory;
+  types?: string[];
   latitude: number;
   longitude: number;
   address?: string;
   rating?: number;
   userRatingsTotal?: number;
-  priceLevel?: number; // 0: Free, 1: Inexpensive, 2: Moderate, 3: Expensive, 4: Very Expensive
+  openingHours?: PlaceOpeningHours;
   websiteUri?: string;
   phoneNumber?: string;
-  openingHours?: PlaceOpeningHours;
   photos?: PlacePhoto[];
-  types?: string[];
-  source: PlaceSource;
+  priceLevel?: number; // 0: Free, 1: Inexpensive, 2: Moderate, 3: Expensive, 4: Very Expensive
   dataStatus: PlaceDataStatus;
-  fetchedAt?: string;
+  retrievedAt?: string;
+  fetchedAt?: string; // alias for backwards compatibility
   
   // Optional travel context metadata (if available or estimated honestly)
-  estimatedCost?: number;
+  estimatedCost?: number | null;
   estimatedDuration?: string;
   description?: string;
   tag?: string;
@@ -93,4 +95,5 @@ export interface PlaceSearchParams {
   longitude?: number;
   radiusMeters?: number;
   limit?: number;
+  locale?: string;
 }

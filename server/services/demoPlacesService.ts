@@ -362,20 +362,245 @@ const DEMO_CATALOG: TraveliaPlace[] = [
     description: 'Iconic stepped emerald-green rice terraces irrigated by traditional Balinese subak water systems.',
     tag: 'Scenic Landscape',
     photos: [{ uri: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?q=80&w=600&auto=format&fit=crop' }]
+  },
+  // ==========================================
+  // TOKYO, JAPAN
+  // ==========================================
+  {
+    id: 'demo-tokyo-hotel-1',
+    source: 'demo',
+    sourceId: 'demo-tokyo-hotel-1',
+    providerId: 'demo-tokyo-hotel-1',
+    name: 'Park Hyatt Tokyo',
+    category: 'hotel',
+    latitude: 35.6852,
+    longitude: 139.6917,
+    address: '3-7-1-2 Nishi-Shinjuku, Shinjuku City, Tokyo, Japan',
+    rating: 4.7,
+    userRatingsTotal: 2150,
+    priceLevel: 4,
+    types: ['lodging', 'hotel'],
+    dataStatus: 'demo',
+    description: 'Iconic luxury hotel in Shinjuku offering sweeping city vistas, New York Grill dining, and spa facilities.',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?q=80&w=600&auto=format&fit=crop' }]
+  },
+  {
+    id: 'demo-tokyo-attr-1',
+    source: 'demo',
+    sourceId: 'demo-tokyo-attr-1',
+    providerId: 'demo-tokyo-attr-1',
+    name: 'Senso-ji Temple',
+    category: 'temple',
+    latitude: 35.7148,
+    longitude: 139.7967,
+    address: '2-3-1 Asakusa, Taito City, Tokyo, Japan',
+    rating: 4.6,
+    userRatingsTotal: 68000,
+    priceLevel: 0,
+    types: ['tourist_attraction', 'temple', 'point_of_interest'],
+    dataStatus: 'demo',
+    description: 'Tokyo’s oldest and most significant ancient Buddhist temple, approached through the bustling Nakamise shopping street.',
+    tag: 'Historic Landmark',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?q=80&w=600&auto=format&fit=crop' }]
+  },
+  {
+    id: 'demo-tokyo-attr-2',
+    source: 'demo',
+    sourceId: 'demo-tokyo-attr-2',
+    providerId: 'demo-tokyo-attr-2',
+    name: 'Shibuya Scramble Crossing',
+    category: 'landmark',
+    latitude: 35.6595,
+    longitude: 139.7005,
+    address: '1 Chome-2-1 Dogenzaka, Shibuya City, Tokyo, Japan',
+    rating: 4.6,
+    userRatingsTotal: 42000,
+    priceLevel: 0,
+    types: ['tourist_attraction', 'landmark', 'point_of_interest'],
+    dataStatus: 'demo',
+    description: 'The world-famous pedestrian scramble intersection, pulsing with neon billboards and iconic energy.',
+    tag: 'Iconic Sights',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?q=80&w=600&auto=format&fit=crop' }]
+  },
+
+  // ==========================================
+  // ROME, ITALY
+  // ==========================================
+  {
+    id: 'demo-rome-hotel-1',
+    source: 'demo',
+    sourceId: 'demo-rome-hotel-1',
+    providerId: 'demo-rome-hotel-1',
+    name: 'Hotel Artemide',
+    category: 'hotel',
+    latitude: 41.9009,
+    longitude: 12.4939,
+    address: 'Via Nazionale 22, 00184 Rome, Italy',
+    rating: 4.8,
+    userRatingsTotal: 3400,
+    priceLevel: 3,
+    types: ['lodging', 'hotel'],
+    dataStatus: 'demo',
+    description: 'Elegant 19th-century boutique hotel on Via Nazionale featuring a rooftop panoramic cocktail lounge and spa.',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?q=80&w=600&auto=format&fit=crop' }]
+  },
+  {
+    id: 'demo-rome-attr-1',
+    source: 'demo',
+    sourceId: 'demo-rome-attr-1',
+    providerId: 'demo-rome-attr-1',
+    name: 'Colosseum & Roman Forum',
+    category: 'landmark',
+    latitude: 41.8902,
+    longitude: 12.4922,
+    address: 'Piazza del Colosseo 1, 00184 Rome, Italy',
+    rating: 4.8,
+    userRatingsTotal: 350000,
+    priceLevel: 2,
+    types: ['tourist_attraction', 'historical_landmark', 'point_of_interest'],
+    dataStatus: 'demo',
+    description: 'Monumental 2,000-year-old Flavian amphitheatre and ancient Roman civic forum.',
+    tag: 'World Wonder',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?q=80&w=600&auto=format&fit=crop' }]
+  },
+
+  // ==========================================
+  // LONDON, UK
+  // ==========================================
+  {
+    id: 'demo-london-hotel-1',
+    source: 'demo',
+    sourceId: 'demo-london-hotel-1',
+    providerId: 'demo-london-hotel-1',
+    name: 'The Savoy London',
+    category: 'hotel',
+    latitude: 51.5101,
+    longitude: -0.1206,
+    address: 'Strand, London WC2R 0EZ, United Kingdom',
+    rating: 4.7,
+    userRatingsTotal: 4900,
+    priceLevel: 4,
+    types: ['lodging', 'hotel'],
+    dataStatus: 'demo',
+    description: 'Historic British landmark hotel on the River Thames, famed for afternoon tea and Edwardian glamour.',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop' }]
+  },
+  {
+    id: 'demo-london-attr-1',
+    source: 'demo',
+    sourceId: 'demo-london-attr-1',
+    providerId: 'demo-london-attr-1',
+    name: 'Tower Bridge & Tower of London',
+    category: 'landmark',
+    latitude: 51.5055,
+    longitude: -0.0754,
+    address: 'Tower Bridge Rd, London SE1 2UP, United Kingdom',
+    rating: 4.7,
+    userRatingsTotal: 145000,
+    priceLevel: 2,
+    types: ['tourist_attraction', 'landmark', 'point_of_interest'],
+    dataStatus: 'demo',
+    description: 'Iconic Victorian bascule and suspension bridge spanning the River Thames with high-level walkways.',
+    tag: 'Top London Sight',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?q=80&w=600&auto=format&fit=crop' }]
+  },
+
+  // ==========================================
+  // SWISS ALPS / INTERLAKEN, SWITZERLAND
+  // ==========================================
+  {
+    id: 'demo-swiss-hotel-1',
+    source: 'demo',
+    sourceId: 'demo-swiss-hotel-1',
+    providerId: 'demo-swiss-hotel-1',
+    name: 'Victoria-Jungfrau Grand Hotel & Spa',
+    category: 'hotel',
+    latitude: 46.6863,
+    longitude: 7.8596,
+    address: 'Höheweg 41, 3800 Interlaken, Switzerland',
+    rating: 4.8,
+    userRatingsTotal: 1850,
+    priceLevel: 4,
+    types: ['lodging', 'resort', 'hotel'],
+    dataStatus: 'demo',
+    description: 'Grand historic palace hotel framed by snowcapped Jungfrau peaks and Lake Thun.',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?q=80&w=600&auto=format&fit=crop' }]
+  },
+  {
+    id: 'demo-swiss-attr-1',
+    source: 'demo',
+    sourceId: 'demo-swiss-attr-1',
+    providerId: 'demo-swiss-attr-1',
+    name: 'Jungfraujoch - Top of Europe',
+    category: 'landmark',
+    latitude: 46.5475,
+    longitude: 7.9822,
+    address: '3823 Lauterbrunnen, Bernese Alps, Switzerland',
+    rating: 4.8,
+    userRatingsTotal: 22000,
+    priceLevel: 3,
+    types: ['tourist_attraction', 'natural_feature', 'point_of_interest'],
+    dataStatus: 'demo',
+    description: 'Europe’s highest-altitude cogwheel railway saddle (3,454m) overlooking the Great Aletsch Glacier.',
+    tag: 'Alpine Wonder',
+    photos: [{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=600&auto=format&fit=crop' }]
   }
 ];
 
 export class DemoPlacesService {
   /**
-   * Search demo catalog by destination and optional category / query
+   * Search demo catalog by destination and optional category / query.
+   * NEVER invents fabricated places when a destination is missing from the catalog.
    */
-  public searchPlaces(destination: string, category?: PlaceCategory, query?: string, limit: number = 20): TraveliaPlace[] {
+  public searchPlaces(
+    destinationOrParams: string | { destination: string; category?: PlaceCategory; query?: string; limit?: number },
+    category?: PlaceCategory,
+    query?: string,
+    limit: number = 20
+  ): TraveliaPlace[] {
+    const destination = typeof destinationOrParams === 'string' 
+      ? destinationOrParams 
+      : destinationOrParams?.destination || '';
+    const resolvedCategory = typeof destinationOrParams === 'object' && destinationOrParams.category
+      ? destinationOrParams.category
+      : category;
+    const resolvedQuery = typeof destinationOrParams === 'object' && destinationOrParams.query
+      ? destinationOrParams.query
+      : query;
+    const resolvedLimit = typeof destinationOrParams === 'object' && destinationOrParams.limit
+      ? destinationOrParams.limit
+      : limit;
+
     const destLower = (destination || '').toLowerCase().trim();
     const destCity = destLower.split(',')[0].trim();
-    const catLower = (category || '').toLowerCase().trim();
-    const qLower = (query || '').toLowerCase().trim();
+    const catLower = (resolvedCategory || '').toLowerCase().trim();
+    const qLower = (resolvedQuery || '').toLowerCase().trim();
 
-    let matches = DEMO_CATALOG.filter(place => {
+    // Clean query to remove generic boilerplate search prompts
+    let specificQuery = qLower;
+    const genericPhrases = [
+      'top tourist attractions in',
+      'tourist attractions in',
+      'attractions in',
+      'things to do in',
+      'places to visit in',
+      'places in',
+      'hotels in',
+      'hotel in',
+      'stays in',
+      'sights in'
+    ];
+    for (const phrase of genericPhrases) {
+      if (specificQuery.includes(phrase)) {
+        specificQuery = specificQuery.replace(phrase, '').trim();
+      }
+    }
+    // Also remove destination city name if left alone
+    if (destCity && (specificQuery === destCity || specificQuery === destLower)) {
+      specificQuery = '';
+    }
+
+    const matches = DEMO_CATALOG.filter(place => {
       const nameMatch = place.name.toLowerCase().includes(destLower) || (destCity && place.name.toLowerCase().includes(destCity));
       const addrMatch = (place.address || '').toLowerCase().includes(destLower) || (destCity && (place.address || '').toLowerCase().includes(destCity));
       const descMatch = (place.description || '').toLowerCase().includes(destLower) || (destCity && (place.description || '').toLowerCase().includes(destCity));
@@ -385,68 +610,52 @@ export class DemoPlacesService {
       if (!inDest) return false;
 
       if (catLower && catLower !== 'all') {
-        if (place.category !== catLower && !place.types?.includes(catLower)) {
+        const catMatches = 
+          place.category === catLower ||
+          place.types?.includes(catLower) ||
+          (catLower === 'tourist_attraction' && place.category !== 'hotel');
+        if (!catMatches) {
           return false;
         }
       }
 
-      if (qLower) {
-        const matchesQ = 
-          place.name.toLowerCase().includes(qLower) ||
-          (place.address || '').toLowerCase().includes(qLower) ||
-          (place.description || '').toLowerCase().includes(qLower) ||
-          place.types?.some(t => t.toLowerCase().includes(qLower));
-        if (!matchesQ) return false;
+      if (specificQuery) {
+        const tokens = specificQuery.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+        const matchesPhrase = 
+          place.name.toLowerCase().includes(specificQuery) ||
+          (place.address || '').toLowerCase().includes(specificQuery) ||
+          (place.description || '').toLowerCase().includes(specificQuery) ||
+          place.types?.some(t => t.toLowerCase().includes(specificQuery));
+        
+        const matchesToken = tokens.some(tok => 
+          place.name.toLowerCase().includes(tok) ||
+          (place.address || '').toLowerCase().includes(tok) ||
+          (place.description || '').toLowerCase().includes(tok) ||
+          (place.tag || '').toLowerCase().includes(tok) ||
+          place.types?.some(t => t.toLowerCase().includes(tok))
+        );
+
+        if (!matchesPhrase && !matchesToken) return false;
       }
 
       return true;
     });
 
-    // If no exact destination match found in catalog, construct fallback demo places
-    // based on verified destination centroid if available
     if (matches.length === 0 && destLower) {
-      const centroid = VERIFIED_DESTINATION_CENTROIDS[destLower] || { latitude: 20.5937, longitude: 78.9629 };
-      matches = [
-        {
-          id: `demo-${destLower}-hotel-1`,
-          providerId: `demo-${destLower}-hotel-1`,
-          name: `${destination} Grand Heritage Stay`,
-          category: 'hotel',
-          latitude: centroid.latitude,
-          longitude: centroid.longitude,
-          address: `Central District, ${destination}`,
-          rating: 4.7,
-          userRatingsTotal: 340,
-          priceLevel: 2,
-          types: ['lodging', 'hotel'],
-          source: 'demo',
-          dataStatus: 'demo',
-          description: `Authentic verified demo stay with central access in ${destination}.`,
-          tag: 'Curated Demo Stay',
-          photos: [{ uri: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop' }]
-        },
-        {
-          id: `demo-${destLower}-attr-1`,
-          providerId: `demo-${destLower}-attr-1`,
-          name: `${destination} Cultural Landmark`,
-          category: 'tourist_attraction',
-          latitude: centroid.latitude,
-          longitude: centroid.longitude,
-          address: `Historic Quarter, ${destination}`,
-          rating: 4.8,
-          userRatingsTotal: 1200,
-          priceLevel: 1,
-          types: ['tourist_attraction', 'point_of_interest'],
-          source: 'demo',
-          dataStatus: 'demo',
-          description: `Premier sightseeing highlight showcasing the culture and heritage of ${destination}.`,
-          tag: 'Demo Highlight',
-          photos: [{ uri: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop' }]
-        }
-      ];
+      // Fallback to any places matching destination and category
+      const fallbackMatches = DEMO_CATALOG.filter(place => {
+        const inDest = (place.address || '').toLowerCase().includes(destLower) ||
+                       place.name.toLowerCase().includes(destLower) ||
+                       (place.description || '').toLowerCase().includes(destLower) ||
+                       place.id.toLowerCase().includes(destLower);
+        if (!inDest) return false;
+        if (catLower && catLower !== 'all' && place.category !== catLower && !place.types?.includes(catLower)) return false;
+        return true;
+      });
+      return fallbackMatches.slice(0, resolvedLimit);
     }
 
-    return matches.slice(0, limit);
+    return matches.slice(0, resolvedLimit);
   }
 
   public getHotels(destination: string, limit: number = 10): TraveliaPlace[] {

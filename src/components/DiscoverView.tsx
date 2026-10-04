@@ -15,11 +15,14 @@ import {
   ExternalLink,
   ShieldCheck,
   Globe,
-  Info
+  Info,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { FEATURED_DESTINATIONS, formatCurrency } from '../data/mockData';
 import { Currency, TraveliaPlace, PlacesResponse } from '../types';
 import { placesClient } from '../services/placesClient';
+import { PlaceStatusBadge } from './PlaceStatusBadge';
 
 interface DiscoverViewProps {
   onSelectDestination: (destName: string) => void;
@@ -50,6 +53,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [selectedDestination, setSelectedDestination] = useState<string>('Goa, India');
   const [placesLoading, setPlacesLoading] = useState<boolean>(false);
   const [placesData, setPlacesData] = useState<PlacesResponse | null>(null);
+  const [placesError, setPlacesError] = useState<string | null>(null);
 
   // Filtered featured destinations
   const filteredDestinations = FEATURED_DESTINATIONS.filter((d) => {
@@ -70,12 +74,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
   const loadRealPlaces = async (destName: string) => {
     setPlacesLoading(true);
+    setPlacesError(null);
     try {
       const cleanDest = destName.split(',')[0].trim();
       const res = await placesClient.searchAttractions(cleanDest, 12);
       setPlacesData(res);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to load places:', err);
+      setPlacesError(err?.message || 'Unable to connect to Places provider. Click below to retry.');
     } finally {
       setPlacesLoading(false);
     }
@@ -344,6 +350,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
           )}
 
+          {/* Error State — Resilient UX */}
+          {!placesLoading && placesError && (
+            <div className="py-16 text-center bg-rose-50/70 rounded-[24px] border border-rose-200/80 p-8 space-y-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-600 mx-auto">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <p className="font-bold text-sm text-neutral-800">Unable to load live places</p>
+              <p className="text-xs text-neutral-600 max-w-md mx-auto">{placesError}</p>
+              <button
+                onClick={() => loadRealPlaces(selectedDestination)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-bold hover:bg-neutral-800 transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Places Search</span>
+              </button>
+            </div>
+          )}
+
           {/* Places Grid */}
           {!placesLoading && placesData && placesData.places.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -370,13 +394,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
                       {/* Source Indicator */}
                       <div className="absolute top-2.5 right-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold backdrop-blur-md ${
-                          place.source === 'google' 
-                            ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-400/30'
-                            : 'bg-amber-900/80 text-amber-200 border border-amber-400/30'
-                        }`}>
-                          {place.source === 'google' ? '● Google Live' : '◉ Demo'}
-                        </span>
+                        <PlaceStatusBadge status={place.dataStatus} source={place.source} />
                       </div>
 
                       {/* Rating */}

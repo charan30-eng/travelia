@@ -12,6 +12,36 @@ export interface CountryCurrencyInfo {
   popularCities: string[];
 }
 
+let lastCurrencyRateSource = 'baseline-reference';
+let lastCurrencyStatus: 'live' | 'cached' | 'demo' | 'unavailable' = 'demo';
+let lastRatesRetrievedAt: string = '';
+
+export function getCurrencyDataSource() {
+  return {
+    source: lastCurrencyRateSource,
+    status: lastCurrencyStatus,
+    retrievedAt: lastRatesRetrievedAt
+  };
+}
+
+export function applyLiveExchangeRates(
+  rates: Record<string, number>,
+  source: string = 'open_exchange_api',
+  status: 'live' | 'cached' | 'demo' | 'unavailable' = 'live',
+  retrievedAt: string = new Date().toISOString()
+) {
+
+  lastCurrencyRateSource = source;
+  lastCurrencyStatus = status;
+  lastRatesRetrievedAt = retrievedAt;
+  for (const country of SUPPORTED_DESTINATION_COUNTRIES) {
+    if (rates[country.currencyCode] && rates[country.currencyCode] > 0) {
+      country.ratePerINR = rates[country.currencyCode];
+    }
+  }
+}
+
+
 export const SUPPORTED_DESTINATION_COUNTRIES: CountryCurrencyInfo[] = [
   {
     countryCode: 'KR',
@@ -507,7 +537,10 @@ export function detectCountryFromDestination(destination: string = '', fallbackC
     query.includes('leh') ||
     query.includes('manali') ||
     query.includes('himachal') ||
+    query.includes('dharamshala') ||
+    query.includes('pradesh') ||
     query.includes('shimla') ||
+
     query.includes('mumbai') ||
     query.includes('delhi') ||
     query.includes('bengaluru') ||

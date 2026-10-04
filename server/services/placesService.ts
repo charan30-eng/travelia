@@ -36,6 +36,24 @@ export class PlacesService {
    */
   public async searchPlaces(params: PlaceSearchParams): Promise<PlacesResponse> {
     const destination = (params.destination || '').trim();
+    if (!destination) {
+      return {
+        success: false,
+        destination: '',
+        query: params.query,
+        category: params.category,
+        source: 'unavailable',
+        dataStatus: 'unavailable',
+        fetchedAt: new Date().toISOString(),
+        totalCount: 0,
+        places: [],
+        error: {
+          code: 'INVALID_DESTINATION',
+          message: 'Destination parameter cannot be empty.'
+        }
+      };
+    }
+
     const query = params.query ? params.query.trim() : '';
     const category = params.category;
     const limit = params.limit || 15;
@@ -47,15 +65,15 @@ export class PlacesService {
     // 1. Check in-memory cache first
     const cached = placesCache.get(cacheKey);
     if (cached && cached.places.length > 0) {
-      console.log(`[Places] Cache hit (${cached.ageSeconds}s old) | Provider: ${cached.provider} | Results: ${cached.places.length}`);
+      console.log(`[Places] Cache hit (${cached.ageSeconds}s old) | Source: ${cached.source} | Results: ${cached.places.length}`);
       return {
         success: true,
         destination,
         query,
         category,
-        source: cached.provider,
+        source: cached.source,
         dataStatus: 'cached',
-        fetchedAt: new Date(Date.now() - cached.ageSeconds * 1000).toISOString(),
+        fetchedAt: cached.createdAt,
         totalCount: cached.places.length,
         cacheAgeSeconds: cached.ageSeconds,
         places: cached.places.slice(0, limit)
@@ -113,7 +131,7 @@ export class PlacesService {
         if (places.length > 0) {
           console.log(`[Places] Provider: google | Results: ${places.length} | Status: live`);
           // Store in cache
-          placesCache.set(cacheKey, places, 'google', destination, category, query);
+          placesCache.set(cacheKey, places, 'google', destination, category, query, params.locale);
 
           return {
             success: true,
@@ -138,25 +156,30 @@ export class PlacesService {
 
     // 3. Fallback to Demo Catalog if enabled
     if (this.isFallbackEnabled) {
-      console.log(`[Places] Falling back to demo data for destination "${destination}"`);
+      console.log(`[Places] Checking demo data fallback for destination "${destination}"`);
       const demoPlaces = demoPlacesService.searchPlaces(destination, category, query, limit);
       const deduplicatedDemo = this.deduplicatePlaces(demoPlaces);
 
-      return {
-        success: true,
-        destination,
-        query,
-        category,
-        source: 'demo',
-        dataStatus: 'demo',
-        fetchedAt: new Date().toISOString(),
-        totalCount: deduplicatedDemo.length,
-        places: deduplicatedDemo.slice(0, limit)
-      };
+      if (deduplicatedDemo.length > 0) {
+        // Cache demo response so identical queries hit cache with source 'demo'
+        placesCache.set(cacheKey, deduplicatedDemo, 'demo', destination, category, query, params.locale);
+
+        return {
+          success: true,
+          destination,
+          query,
+          category,
+          source: 'demo',
+          dataStatus: 'demo',
+          fetchedAt: new Date().toISOString(),
+          totalCount: deduplicatedDemo.length,
+          places: deduplicatedDemo.slice(0, limit)
+        };
+      }
     }
 
     // 4. Unavailable
-    console.log(`[Places] Google unavailable and demo fallback disabled. Returning empty result.`);
+    console.log(`[Places] Google unavailable and no demo places match for "${destination}". Returning empty result.`);
     return {
       success: false,
       destination,
@@ -168,8 +191,8 @@ export class PlacesService {
       totalCount: 0,
       places: [],
       error: {
-        code: 'PLACES_API_UNAVAILABLE',
-        message: 'Live place data is currently unavailable and demo fallback is disabled.'
+        code: 'PLACES_UNAVAILABLE',
+        message: `Live place data is currently unavailable for "${destination}" and demo fallback contains no matches.`
       }
     };
   }

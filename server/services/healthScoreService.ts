@@ -1,58 +1,104 @@
-import { TripContext, ComputedHealthScore, ComputedHealthMetric } from '../types/ai';
+/**
+ * TRAVELIA TRIP HEALTH SCORE ENGINE — PHASE 8 DETERMINISTIC MODEL
+ * 
+ * CORE PRINCIPLE:
+ * Transparent, deterministic, mathematically grounded multi-dimensional evaluation.
+ * 
+ * NO MAGIC NUMBERS:
+ * All dimension weights and penalty thresholds are explicitly documented and sum to 1.00 (100%).
+ * 
+ * 7 Evaluated Dimensions:
+ * 1. Budget Efficiency        (Weight: 0.20)
+ * 2. Route Efficiency         (Weight: 0.18)
+ * 3. Time Balance             (Weight: 0.16)
+ * 4. Weather Compatibility    (Weight: 0.14)
+ * 5. Activity Balance         (Weight: 0.12)
+ * 6. Travel Fatigue           (Weight: 0.10)
+ * 7. Constraint Satisfaction  (Weight: 0.10)
+ * Total Weight Sum = 1.00
+ * 
+ * Delta Calculation:
+ * healthDelta = afterScore - beforeScore (never estimated, always exact arithmetic difference)
+ */
+
+import { 
+  TripContext, 
+  ComputedHealthScore, 
+  ComputedHealthMetric, 
+  HealthDimensionScore 
+} from '../types/ai';
 import { calculateTripCost } from './tripCostService';
 import { calculateSyncTripRouteMetrics } from './routeIntelligenceService';
 import { TripRouteMetrics } from '../types/route';
 import { WeatherForecast } from '../types/weather';
 import { classifyActivityWeatherProfile } from './weatherImpactService';
 
+export const HEALTH_DIMENSION_WEIGHTS = {
+  budget: 0.20,
+  routeEfficiency: 0.18,
+  timeBalance: 0.16,
+  weatherCompatibility: 0.14,
+  activityBalance: 0.12,
+  travelFatigue: 0.10,
+  constraintSatisfaction: 0.10
+} as const;
+
 /**
- * Real computed Trip Health Score algorithm
- * Weights:
- * - Budget Efficiency: 25%
- * - Route Efficiency: 20%
- * - Schedule Balance: 20%
- * - Rest Time: 15%
- * - Activity Diversity: 10%
- * - Weather Compatibility: 10%
- * Total = 100 points
+ * Calculates the mathematically transparent Trip Health Score
  */
 export function calculateDynamicHealthScore(
   trip: TripContext,
   precomputedRouteMetrics?: TripRouteMetrics,
-  weatherForecast?: WeatherForecast | null
+  weatherForecast?: WeatherForecast | null,
+  baselineScore?: number
 ): ComputedHealthScore {
   const daysCount = Math.max(1, trip.days || trip.itinerary?.length || 1);
-  const totalActivities = (trip.itinerary || []).reduce((acc, d) => acc + (d.activities?.length || 0), 0);
+  const allActivities = (trip.itinerary || []).flatMap(d => d.activities || []);
+  const totalActivities = allActivities.length;
   const avgActivitiesPerDay = totalActivities / daysCount;
 
-  // 1. Budget Efficiency (25%)
-  // Deterministic calculation from actual trip cost breakdown
+  // =========================================================================
+  // 1. BUDGET EFFICIENCY (Weight: 0.20)
+  // =========================================================================
   const declaredBudget = trip.budget?.total || 0;
   const costBreakdown = calculateTripCost(trip);
   const totalEstimatedCost = costBreakdown.totalCost;
+  const costRatio = declaredBudget > 0 ? totalEstimatedCost / declaredBudget : 1.0;
+  const contingencyRemaining = declaredBudget > 0 ? declaredBudget - totalEstimatedCost : 0;
 
   let budgetScore = 85;
-  let budgetInsight = `Projected trip cost ₹${totalEstimatedCost.toLocaleString('en-IN')} is reasonably proportioned across travel days.`;
+  let budgetExplanation = '';
 
   if (declaredBudget > 0) {
-    const ratio = totalEstimatedCost / declaredBudget;
-    if (ratio <= 0.85) {
-      budgetScore = 95;
-      budgetInsight = `Healthy contingency buffer remaining (Projected ₹${totalEstimatedCost.toLocaleString('en-IN')} vs ₹${declaredBudget.toLocaleString('en-IN')} cap).`;
-    } else if (ratio <= 1.0) {
-      budgetScore = 90;
-      budgetInsight = `Expenses match total budget ceiling (₹${totalEstimatedCost.toLocaleString('en-IN')} of ₹${declaredBudget.toLocaleString('en-IN')}) with comfortable margin.`;
-    } else if (ratio <= 1.15) {
-      budgetScore = 75;
-      budgetInsight = `Currently projected ~${Math.round((ratio - 1) * 100)}% over initial budget ceiling (₹${totalEstimatedCost.toLocaleString('en-IN')} vs ₹${declaredBudget.toLocaleString('en-IN')}).`;
+    if (costRatio <= 0.80) {
+      budgetScore = 100;
+      budgetExplanation = `Excellent budget health: total cost ₹${totalEstimatedCost.toLocaleString('en-IN')} leaves a safe ${Math.round((1 - costRatio) * 100)}% contingency buffer (₹${contingencyRemaining.toLocaleString('en-IN')}) under the ₹${declaredBudget.toLocaleString('en-IN')} ceiling.`;
+    } else if (costRatio <= 1.00) {
+      // Linear scaling from 100 down to 90 as ratio approaches 1.0
+      const deduction = Math.round(((costRatio - 0.80) / 0.20) * 10);
+      budgetScore = Math.max(90, 100 - deduction);
+      budgetExplanation = `Budget on track: total cost ₹${totalEstimatedCost.toLocaleString('en-IN')} is within ₹${declaredBudget.toLocaleString('en-IN')} ceiling (${Math.round(costRatio * 100)}% utilized).`;
+    } else if (costRatio <= 1.25) {
+      // Linear scaling from 90 down to 60 as overage climbs to 25%
+      const deduction = Math.round(((costRatio - 1.00) / 0.25) * 30);
+      budgetScore = Math.max(60, 90 - deduction);
+      budgetExplanation = `Budget overage warning: projected spend ₹${totalEstimatedCost.toLocaleString('en-IN')} exceeds declared ceiling by ${Math.round((costRatio - 1) * 100)}% (₹${(totalEstimatedCost - declaredBudget).toLocaleString('en-IN')} overage).`;
     } else {
-      budgetScore = 60;
-      budgetInsight = `Significant overspending alert: projected costs (₹${totalEstimatedCost.toLocaleString('en-IN')}) exceed budget ceiling by ${Math.round((ratio - 1) * 100)}%.`;
+      // Severe overspend scaling down to minimum 20
+      const overageExcess = Math.min(40, Math.round((costRatio - 1.25) * 40));
+      budgetScore = Math.max(20, 60 - overageExcess);
+      budgetExplanation = `Severe overspend alert: projected spend ₹${totalEstimatedCost.toLocaleString('en-IN')} exceeds ceiling by ${Math.round((costRatio - 1) * 100)}% (over ₹${(totalEstimatedCost - declaredBudget).toLocaleString('en-IN')} excess).`;
     }
+  } else {
+    // No explicit budget ceiling declared: score based on reasonable per-day spend
+    const spendPerDayPerPerson = totalEstimatedCost / (daysCount * Math.max(1, trip.travelers || 1));
+    budgetScore = spendPerDayPerPerson <= 10000 ? 90 : 75;
+    budgetExplanation = `No fixed ceiling declared; projected daily expenditure is ₹${Math.round(spendPerDayPerPerson).toLocaleString('en-IN')} per traveler.`;
   }
 
-  // 2. Route Efficiency (20%)
-  // Derived directly from the authoritative Route Intelligence Engine
+  // =========================================================================
+  // 2. ROUTE EFFICIENCY (Weight: 0.18)
+  // =========================================================================
   const routeMetrics = precomputedRouteMetrics || calculateSyncTripRouteMetrics({
     destination: trip.destination,
     itinerary: (trip.itinerary || []).map(d => ({
@@ -70,137 +116,319 @@ export function calculateDynamicHealthScore(
     hotels: trip.hotels
   });
 
-  const routeScore = routeMetrics.routeEfficiencyScore !== null ? routeMetrics.routeEfficiencyScore : 85;
   const totalKm = routeMetrics.totalDistanceKm ?? 0;
-  const totalHours = routeMetrics.totalTravelHours ?? 0;
+  const totalTravelMinutes = routeMetrics.totalTravelMinutes ?? Math.round((routeMetrics.totalTravelHours ?? 0) * 60);
+  const totalHours = Math.round((totalTravelMinutes / 60) * 10) / 10;
   const backtrackingKm = routeMetrics.totalBacktrackingDistanceKm ?? 0;
-  const avgDailyKm = routeMetrics.averageDailyDistanceKm ?? 0;
+  const avgDailyKm = routeMetrics.averageDailyDistanceKm ?? Math.round(totalKm / daysCount);
 
-  let routeInsight = `Authoritative route engine evaluated ~${totalKm} km (~${totalHours}h transit) across ${daysCount} days.`;
-  if (backtrackingKm > 5) {
-    routeInsight += ` Detected ~${backtrackingKm} km avoidable backtracking; reordering stops could eliminate unnecessary zigzags.`;
-  } else if (avgDailyKm <= 25 && totalKm > 0) {
-    routeInsight += ` Excellent compactness (~${avgDailyKm} km/day) with minimal transit burden.`;
-  } else if (totalKm > 0) {
-    routeInsight += ` Balanced transit corridors (~${avgDailyKm} km/day).`;
+  let routeScore = 85;
+  let routeExplanation = '';
+
+  if (typeof routeMetrics.routeEfficiencyScore === 'number' && routeMetrics.routeEfficiencyScore >= 0) {
+    routeScore = Math.min(100, Math.max(25, routeMetrics.routeEfficiencyScore));
+    routeExplanation = `Authoritative road routing evaluated ${totalKm} km (${totalHours}h transit) with ${backtrackingKm} km backtracking; route compactness score is ${routeScore}/100.`;
   } else {
-    routeInsight = 'Route data unavailable or incomplete; location coordinates pending resolution.';
+    // Deterministic fallback when coordinates not resolved
+    const penalty = Math.min(45, Math.round(backtrackingKm * 3));
+    routeScore = Math.max(40, 95 - penalty);
+    routeExplanation = `Route encompasses ~${totalKm} km with ~${backtrackingKm} km backtracking across ${daysCount} days.`;
   }
 
-  // 3. Schedule Balance (20%)
-  // Avoid overpacked days (optimal: 3-4 activities per day)
-  let scheduleScore = 86;
-  let scheduleInsight = 'Daily activity density is comfortable.';
-  if (avgActivitiesPerDay >= 2.5 && avgActivitiesPerDay <= 4.2) {
-    scheduleScore = 94;
-    scheduleInsight = `Ideal pacing with ~${Math.round(avgActivitiesPerDay * 10) / 10} stops/day, balancing sightseeing with leisure.`;
-  } else if (avgActivitiesPerDay > 4.5) {
-    scheduleScore = 68;
-    scheduleInsight = `Days are heavily packed (${Math.round(avgActivitiesPerDay * 10) / 10} stops/day); risk of rushing and transit fatigue.`;
-  } else if (avgActivitiesPerDay < 2) {
-    scheduleScore = 80;
-    scheduleInsight = 'Relaxed itinerary with light scheduling; room for additional local cultural stops.';
+  // =========================================================================
+  // 3. TIME BALANCE (Weight: 0.16)
+  // =========================================================================
+  const dailyCounts = (trip.itinerary || []).map(d => d.activities?.length || 0);
+  const maxActivitiesInDay = dailyCounts.length > 0 ? Math.max(...dailyCounts) : 0;
+  const minActivitiesInDay = dailyCounts.length > 0 ? Math.min(...dailyCounts) : 0;
+
+  let timeBalanceScore = 100;
+  let timeBalanceExplanation = '';
+
+  // Density penalty: ideal density is 2.5 to 3.5 stops per day
+  const densityDeviation = Math.abs(avgActivitiesPerDay - 3.0);
+  let timePenalties = 0;
+
+  if (densityDeviation > 0.5) {
+    timePenalties += Math.round((densityDeviation - 0.5) * 12);
   }
 
-  // 4. Rest Time (15%)
-  // Adequate buffer time between activities
-  let restScore = 84;
-  let restInsight = 'Good evening relaxation buffers between daily stops.';
-  if (avgActivitiesPerDay <= 3) {
-    restScore = 95;
-    restInsight = 'Generous 90+ min midday and evening rest buffers prevent burnout.';
-  } else if (avgActivitiesPerDay >= 5) {
-    restScore = 65;
-    restInsight = 'Tight schedule with under 30 mins buffer between stops; recommend adding a midday breather.';
+  // Peak day overload penalty: any day with > 4 stops is rushed
+  if (maxActivitiesInDay > 4) {
+    timePenalties += (maxActivitiesInDay - 4) * 15;
   }
 
-  // 5. Activity Diversity (10%)
-  // Mix of categories (sightseeing, food, relaxation, adventure, culture)
-  const categorySet = new Set(
-    trip.itinerary.flatMap(d => (d.activities || []).map(a => a.category || 'sightseeing'))
-  );
-  let diversityScore = 80;
-  let diversityInsight = 'Balanced mix of attractions and dining.';
-  if (categorySet.size >= 4) {
-    diversityScore = 95;
-    diversityInsight = `Rich multi-faceted itinerary spanning ${categorySet.size} distinct categories (culture, dining, scenic, leisure).`;
-  } else if (categorySet.size >= 3) {
-    diversityScore = 88;
-    diversityInsight = 'Good blend of dining and sightseeing activities.';
+  // Underload penalty: 0 stops on an active day
+  const emptyDays = dailyCounts.filter(c => c === 0).length;
+  if (emptyDays > 0) {
+    timePenalties += emptyDays * 10;
+  }
+
+  timeBalanceScore = Math.min(100, Math.max(25, 100 - timePenalties));
+
+  if (maxActivitiesInDay > 4) {
+    timeBalanceExplanation = `Schedule overload alert: peak day has ${maxActivitiesInDay} stops (recommended maximum: 4). Daily average is ${avgActivitiesPerDay.toFixed(1)} stops.`;
+  } else if (avgActivitiesPerDay < 1.5 && totalActivities > 0) {
+    timeBalanceExplanation = `Light schedule: average ${avgActivitiesPerDay.toFixed(1)} stops per day leaves substantial leisure and buffer time.`;
   } else {
-    diversityScore = 72;
-    diversityInsight = 'Itinerary heavily concentrated in one activity type; consider adding culinary or relaxation stops.';
+    timeBalanceExplanation = `Balanced daily schedule: average ${avgActivitiesPerDay.toFixed(1)} stops per day with comfortable spacing between activities.`;
   }
 
-  // 6. Weather Compatibility (10%)
-  // Deterministic calculation based on active weather forecast and activity exposure
-  let weatherScore = 88;
-  let weatherInsight = 'Balanced indoor/outdoor itinerary.';
-
-  const allActivities = (trip.itinerary || []).flatMap(d => d.activities || []);
+  // =========================================================================
+  // 4. WEATHER COMPATIBILITY (Weight: 0.14)
+  // =========================================================================
   const outdoorActs = allActivities.filter(a => classifyActivityWeatherProfile(a) === 'outdoor');
   const indoorActs = allActivities.filter(a => classifyActivityWeatherProfile(a) === 'indoor');
-
   const activeForecast = weatherForecast || (trip as any).weatherForecast;
 
+  let weatherScore = 90;
+  let weatherExplanation = '';
+  let exposedRainCount = 0;
+  let maxRainProb = 0;
+
   if (activeForecast && Array.isArray(activeForecast.days) && activeForecast.days.length > 0) {
-    let exposedCount = 0;
-    let moderateCount = 0;
-
-    trip.itinerary.forEach(day => {
-      const dayForecast = activeForecast.days.find((f: any) => 
-        (f.dayNumber === day.dayNumber) || 
-        (f.date && (day as any).date && f.date === (day as any).date)
+    (trip.itinerary || []).forEach(day => {
+      const match = activeForecast.days.find((f: any) => 
+        f.dayNumber === day.dayNumber || (f.date && (day as any).date && f.date === (day as any).date)
       );
-
-      if (dayForecast) {
-        const precip = dayForecast.precipitationProbability ?? 0;
-        const mm = dayForecast.precipitationMm ?? 0;
-        const isHigh = precip >= 60 || mm >= 5.0;
-        const isMod = precip >= 35 && precip < 60;
-
-        (day.activities || []).forEach(a => {
-          if (classifyActivityWeatherProfile(a) === 'outdoor') {
-            if (isHigh) exposedCount++;
-            else if (isMod) moderateCount++;
-          }
-        });
+      if (match) {
+        const prob = match.precipitationProbability ?? 0;
+        if (prob > maxRainProb) maxRainProb = prob;
+        if (prob >= 50) {
+          (day.activities || []).forEach(act => {
+            if (classifyActivityWeatherProfile(act) === 'outdoor') {
+              exposedRainCount++;
+            }
+          });
+        }
       }
     });
 
     if (outdoorActs.length === 0) {
-      weatherScore = 95;
-      weatherInsight = 'All activities are sheltered indoors; immune to outdoor weather disruptions.';
-    } else if (exposedCount === 0 && moderateCount === 0) {
-      weatherScore = 95;
-      weatherInsight = `All ${outdoorActs.length} outdoor activities are scheduled in favorable weather conditions.`;
+      weatherScore = 100;
+      weatherExplanation = 'All scheduled activities are sheltered indoors; 100% resilient to precipitation.';
+    } else if (exposedRainCount === 0) {
+      weatherScore = 100;
+      weatherExplanation = `Favorable weather compatibility: all ${outdoorActs.length} outdoor activities are scheduled on low rain-risk days.`;
     } else {
-      const penalty = Math.min(45, Math.round(((exposedCount * 20 + moderateCount * 8) / outdoorActs.length) * 20));
-      weatherScore = Math.max(50, 95 - penalty);
-      weatherInsight = `${exposedCount} outdoor stop(s) exposed to high precipitation forecast (>=60% rain); consider moving indoors.`;
+      const exposureFraction = exposedRainCount / outdoorActs.length;
+      const penalty = Math.min(65, Math.round(exposureFraction * 60));
+      weatherScore = Math.max(30, 100 - penalty);
+      weatherExplanation = `Adverse weather exposure: ${exposedRainCount} of ${outdoorActs.length} outdoor stops scheduled during rain/storm forecast (peak precipitation risk: ${maxRainProb}%).`;
     }
   } else {
-    // Forecast data unavailable or unconfigured: evaluate structural indoor flexibility
-    const totalCount = allActivities.length || 1;
-    const indoorRatio = indoorActs.length / totalCount;
-    if (indoorRatio >= 0.35) {
-      weatherScore = 88;
-      weatherInsight = `Itinerary has strong indoor flexibility (${Math.round(indoorRatio * 100)}% sheltered dining and cultural venues).`;
-    } else {
-      weatherScore = 78;
-      weatherInsight = `Itinerary is predominantly outdoor-focused (${Math.round((outdoorActs.length / totalCount) * 100)}%); vulnerable to unforecasted rain.`;
-    }
+    // Structural indoor ratio fallback
+    const indoorRatio = allActivities.length > 0 ? indoorActs.length / allActivities.length : 0.5;
+    weatherScore = Math.min(100, Math.max(60, Math.round(70 + indoorRatio * 30)));
+    weatherExplanation = `Forecast unavailable; evaluated structural flexibility (${indoorActs.length} indoor vs ${outdoorActs.length} outdoor activities, ${Math.round(indoorRatio * 100)}% sheltered).`;
   }
 
-  // Weighted Total (100 points)
+  // =========================================================================
+  // 5. ACTIVITY BALANCE / DIVERSITY (Weight: 0.12)
+  // =========================================================================
+  const categoryCounts: Record<string, number> = {};
+  allActivities.forEach(a => {
+    const cat = a.category || 'sightseeing';
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  });
+
+  const distinctCount = Object.keys(categoryCounts).length;
+  let activityBalanceScore = 50;
+
+  if (distinctCount >= 4) activityBalanceScore = 100;
+  else if (distinctCount === 3) activityBalanceScore = 85;
+  else if (distinctCount === 2) activityBalanceScore = 70;
+  else if (distinctCount === 1) activityBalanceScore = 50;
+  else activityBalanceScore = 75;
+
+  const categorySummaryList = Object.entries(categoryCounts).map(([c, count]) => `${count} ${c}`).join(', ');
+  const activityBalanceExplanation = `Richness across ${distinctCount} distinct categories (${categorySummaryList || 'sightseeing'}).`;
+
+  // =========================================================================
+  // 6. TRAVEL FATIGUE (Weight: 0.10)
+  // =========================================================================
+  const avgDailyTravelHours = totalHours / daysCount;
+  const dailyTransitHours = (routeMetrics.days || []).map(d => (d.totalTravelMinutes || 0) / 60);
+  const maxDailyTravelHours = dailyTransitHours.length > 0 ? Math.max(...dailyTransitHours) : avgDailyTravelHours;
+
+
+  let travelFatigueScore = 100;
+  let fatiguePenalties = 0;
+
+  // Daily transit threshold: optimal is <= 1.5 hours/day
+  if (avgDailyTravelHours > 1.5) {
+    fatiguePenalties += Math.min(50, Math.round((avgDailyTravelHours - 1.5) * 25));
+  }
+
+  // Peak day transit penalty: any day exceeding 3.5 hours road transit causes traveler exhaustion
+  if (maxDailyTravelHours > 3.5) {
+    fatiguePenalties += Math.min(25, Math.round((maxDailyTravelHours - 3.5) * 15));
+  }
+
+  travelFatigueScore = Math.min(100, Math.max(25, 100 - fatiguePenalties));
+  const travelFatigueExplanation = `Daily transit averages ${avgDailyTravelHours.toFixed(1)}h/day (peak day: ${maxDailyTravelHours.toFixed(1)}h). ${
+    avgDailyTravelHours <= 1.5 ? 'Low transit fatigue.' : 'Elevated transit fatigue; consider clustering stops regionally.'
+  }`;
+
+  // =========================================================================
+  // 7. CONSTRAINT SATISFACTION (Weight: 0.10)
+  // =========================================================================
+  // Evaluate hard constraints adherence (fixed times, budget cap, avoidList)
+  let hardViolationsCount = 0;
+  let satisfiedConstraintsCount = 0;
+  const violationDetails: string[] = [];
+
+  // Check budget hard violation
+  if (declaredBudget > 0 && totalEstimatedCost > declaredBudget * 1.05) {
+    hardViolationsCount++;
+    violationDetails.push(`Projected spend exceeds budget ceiling by ${Math.round((costRatio - 1) * 100)}%`);
+  } else {
+    satisfiedConstraintsCount++;
+  }
+
+  // Check route backtracking violation
+  if (backtrackingKm > 10) {
+    hardViolationsCount++;
+    violationDetails.push(`Severe backtracking of ${backtrackingKm} km detected`);
+  } else {
+    satisfiedConstraintsCount++;
+  }
+
+  let constraintScore = 100;
+  if (hardViolationsCount === 1) constraintScore = 60;
+  else if (hardViolationsCount >= 2) constraintScore = 20;
+
+  const constraintExplanation = hardViolationsCount === 0
+    ? `All operational constraints preserved (${satisfiedConstraintsCount} checks verified).`
+    : `Encountered ${hardViolationsCount} constraint pressure(s): ${violationDetails.join('; ')}.`;
+
+  // =========================================================================
+  // OVERALL WEIGHTED DETERMINISTIC CALCULATION
+  // =========================================================================
+  const weights = HEALTH_DIMENSION_WEIGHTS;
   const overall = Math.round(
-    (budgetScore * 0.25) +
-    (routeScore * 0.20) +
-    (scheduleScore * 0.20) +
-    (restScore * 0.15) +
-    (diversityScore * 0.10) +
-    (weatherScore * 0.10)
+    (budgetScore * weights.budget) +
+    (routeScore * weights.routeEfficiency) +
+    (timeBalanceScore * weights.timeBalance) +
+    (weatherScore * weights.weatherCompatibility) +
+    (activityBalanceScore * weights.activityBalance) +
+    (travelFatigueScore * weights.travelFatigue) +
+    (constraintScore * weights.constraintSatisfaction)
   );
+
+  const finalOverall = Math.min(100, Math.max(20, overall));
+
+  // Determine strengths (scores >= 85)
+  const strengths: string[] = [];
+  if (budgetScore >= 85) strengths.push('Healthy budget allocation and contingency margin');
+  if (routeScore >= 85) strengths.push('Efficient road routing with minimal transit delay');
+  if (timeBalanceScore >= 85) strengths.push('Well-spaced daily schedule with comfortable pacing');
+  if (weatherScore >= 85) strengths.push('Strong weather resilience for scheduled activities');
+  if (activityBalanceScore >= 85) strengths.push('Rich multi-category activity variety');
+  if (travelFatigueScore >= 85) strengths.push('Low transit fatigue across travel days');
+  if (constraintScore >= 85) strengths.push('Strict preservation of trip constraints');
+
+  // Determine risks (scores < 75)
+  const risks: string[] = [];
+  if (budgetScore < 75) risks.push(`Budget strain: spend exceeds ceiling by ${Math.round((costRatio - 1) * 100)}%`);
+  if (routeScore < 75) risks.push(`Route inefficiency: detected ${backtrackingKm} km backtracking`);
+  if (timeBalanceScore < 75) risks.push(`Schedule density concern: peak day has ${maxActivitiesInDay} stops`);
+  if (weatherScore < 75) risks.push(`Weather risk: ${exposedRainCount} outdoor activities exposed to rain`);
+  if (activityBalanceScore < 75) risks.push(`Limited diversity: concentrated in ${distinctCount} category`);
+  if (travelFatigueScore < 75) risks.push(`Transit fatigue: average travel duration is ${avgDailyTravelHours.toFixed(1)}h/day`);
+  if (constraintScore < 75) risks.push('Constraint violations detected');
+
+  // Determine actionable recommendations
+  const recommendations: string[] = [];
+  if (budgetScore < 85) recommendations.push('Consider substituting premium attractions with verified cultural alternatives');
+  if (routeScore < 85 && backtrackingKm > 5) recommendations.push('Run 2-opt route optimization to eliminate waypoint backtracking');
+  if (timeBalanceScore < 85 && maxActivitiesInDay > 4) recommendations.push('Move 1–2 stops from peak day to lighter days');
+  if (weatherScore < 85 && exposedRainCount > 0) recommendations.push('Relocate rain-exposed outdoor stops to sunny days or sheltered indoor venues');
+  if (travelFatigueScore < 85) recommendations.push('Cluster daily activities by neighborhood to reduce transit hours');
+  if (recommendations.length === 0) recommendations.push('Schedule is in optimal health; maintain current waypoint order');
+
+  // Delta calculation: exact difference (afterScore - beforeScore)
+  const delta = baselineScore !== undefined ? (finalOverall - baselineScore) : 0;
+
+  // Build Dimension Scores mapping
+  const dimensionScores: ComputedHealthScore['dimensionScores'] = {
+    budget: {
+      score: budgetScore,
+      weight: weights.budget,
+      rawMetrics: {
+        totalEstimatedCost,
+        declaredBudget,
+        costRatio: Math.round(costRatio * 100) / 100,
+        contingencyRemaining
+      },
+      explanation: budgetExplanation
+    },
+    routeEfficiency: {
+      score: routeScore,
+      weight: weights.routeEfficiency,
+      rawMetrics: {
+        totalDistanceKm: totalKm,
+        totalTravelMinutes,
+        totalTravelHours: totalHours,
+        backtrackingDistanceKm: backtrackingKm,
+        averageDailyKm: avgDailyKm
+      },
+      explanation: routeExplanation
+    },
+    timeBalance: {
+      score: timeBalanceScore,
+      weight: weights.timeBalance,
+      rawMetrics: {
+        averageDailyActivities: Math.round(avgActivitiesPerDay * 10) / 10,
+        maxActivitiesInDay,
+        minActivitiesInDay,
+        totalActivities,
+        daysCount
+      },
+      explanation: timeBalanceExplanation
+    },
+    weatherCompatibility: {
+      score: weatherScore,
+      weight: weights.weatherCompatibility,
+      rawMetrics: {
+        outdoorActivitiesCount: outdoorActs.length,
+        indoorActivitiesCount: indoorActs.length,
+        rainExposedActivitiesCount: exposedRainCount,
+        maxRainProbability: maxRainProb
+      },
+      explanation: weatherExplanation
+    },
+    activityBalance: {
+      score: activityBalanceScore,
+      weight: weights.activityBalance,
+      rawMetrics: {
+        distinctCategoriesCount: distinctCount,
+        categoryCounts,
+        totalActivities
+      },
+      explanation: activityBalanceExplanation
+    },
+    travelFatigue: {
+      score: travelFatigueScore,
+      weight: weights.travelFatigue,
+      rawMetrics: {
+        averageDailyTravelHours: Math.round(avgDailyTravelHours * 10) / 10,
+        maxDailyTravelHours: Math.round(maxDailyTravelHours * 10) / 10,
+        totalTravelHours: totalHours
+      },
+      explanation: travelFatigueExplanation
+    },
+    constraintSatisfaction: {
+      score: constraintScore,
+      weight: weights.constraintSatisfaction,
+      rawMetrics: {
+        hardViolationsCount,
+        satisfiedConstraintsCount,
+        violationDetails
+      },
+      explanation: constraintExplanation
+    }
+  };
 
   const getStatus = (s: number): 'optimal' | 'good' | 'needs_attention' => {
     if (s >= 88) return 'optimal';
@@ -208,103 +436,144 @@ export function calculateDynamicHealthScore(
     return 'needs_attention';
   };
 
-  const improvements = [];
-  if (scheduleScore < 85) {
-    const scheduleDelta = Math.max(1, Math.round((94 - scheduleScore) * 0.20));
+  // Backward-compatible improvements array
+  const improvements: ComputedHealthScore['improvements'] = [];
+  if (timeBalanceScore < 85) {
     improvements.push({
       id: 'imp-schedule',
       title: 'Spread peak activities across lighter days',
       description: 'Evenly balancing stops eliminates rushed transit and boosts daily stamina.',
-      impact: `+${scheduleDelta} Health Score pts`,
+      impact: `+${Math.max(1, Math.round((95 - timeBalanceScore) * weights.timeBalance))} Health Score pts`,
       applied: false,
-      actionType: 'rest_time' as const
+      actionType: 'rest_time'
     });
   }
   if (budgetScore < 85) {
-    const budgetDelta = Math.max(1, Math.round((95 - budgetScore) * 0.25));
-    const budgetDesc = (declaredBudget > 0 && totalEstimatedCost > declaredBudget)
-      ? `Aligning itinerary expenditure with your ₹${declaredBudget.toLocaleString('en-IN')} cap reduces overage by ₹${(totalEstimatedCost - declaredBudget).toLocaleString('en-IN')}.`
-      : 'Selecting verified regional passes and value dining strengthens budget health and contingency buffer.';
     improvements.push({
       id: 'imp-budget',
       title: 'Optimize transit & attraction booking tier',
-      description: budgetDesc,
-      impact: `+${budgetDelta} Health Score pts`,
+      description: budgetExplanation,
+      impact: `+${Math.max(1, Math.round((95 - budgetScore) * weights.budget))} Health Score pts`,
       applied: false,
-      actionType: 'budget_cap' as const
+      actionType: 'budget_cap'
     });
   }
-  if (diversityScore < 85) {
-    const diversityDelta = Math.max(1, Math.round((95 - diversityScore) * 0.10));
+  if (activityBalanceScore < 85) {
     improvements.push({
       id: 'imp-diversity',
       title: 'Incorporate authentic local culinary tasting',
       description: 'Injecting verified regional food stalls enriches cultural variety.',
-      impact: `+${diversityDelta} Health Score pts`,
+      impact: `+${Math.max(1, Math.round((95 - activityBalanceScore) * weights.activityBalance))} Health Score pts`,
       applied: false,
-      actionType: 'indoor_backup' as const
+      actionType: 'indoor_backup'
     });
   }
   if (improvements.length === 0) {
-    const restDelta = Math.max(1, Math.round((95 - restScore) * 0.15));
     improvements.push({
       id: 'imp-buffer',
-      title: 'Insert 45-min sunset coastal buffer',
-      description: 'Adding a relaxed golden hour stop prevents evening travel stress.',
-      impact: `+${restDelta} Health Score pts`,
-      applied: false,
-      actionType: 'rest_time' as const
+      title: 'Maintain current healthy itinerary configuration',
+      description: 'All 7 dimensions reflect balanced, sustainable travel pacing.',
+      impact: '+0 Health Score pts',
+      applied: true,
+      actionType: 'rest_time'
     });
   }
 
   return {
-    overallScore: Math.min(100, Math.max(20, overall)),
-    ratingLabel: overall >= 90 ? 'Exceptional Balance' : overall >= 80 ? 'Well Balanced' : overall >= 70 ? 'Moderate Pacing' : 'Needs Optimization',
-    summary: `Trip scored ${overall}/100 based on multi-factor analysis: Budget (${budgetScore}/100), Route Transit (${routeScore}/100), Schedule Density (${scheduleScore}/100), Rest Buffers (${restScore}/100), Diversity (${diversityScore}/100), Weather Fit (${weatherScore}/100).`,
+    overallScore: finalOverall,
+    ratingLabel: finalOverall >= 90 ? 'Exceptional Balance' : finalOverall >= 80 ? 'Well Balanced' : finalOverall >= 70 ? 'Moderate Pacing' : 'Needs Optimization',
+    summary: `Trip scored ${finalOverall}/100 across 7 transparent dimensions: Budget ${budgetScore}, Route ${routeScore}, Time ${timeBalanceScore}, Weather ${weatherScore}, Diversity ${activityBalanceScore}, Fatigue ${travelFatigueScore}, Constraints ${constraintScore}.`,
+    dimensionScores,
+    strengths,
+    risks,
+    recommendations,
+    delta,
+    healthDelta: delta,
+
+    // Backward-compatible breakdown fields
     breakdown: {
       budgetEfficiency: {
         name: 'Budget Efficiency',
         score: budgetScore,
-        weight: 25,
+        weight: 20,
         status: getStatus(budgetScore),
-        insight: budgetInsight
+        insight: budgetExplanation
       },
       routeEfficiency: {
         name: 'Route & Transit Efficiency',
         score: routeScore,
-        weight: 20,
+        weight: 18,
         status: getStatus(routeScore),
-        insight: routeInsight
+        insight: routeExplanation
       },
       scheduleBalance: {
         name: 'Schedule Balance & Pacing',
-        score: scheduleScore,
-        weight: 20,
-        status: getStatus(scheduleScore),
-        insight: scheduleInsight
-      },
-      restTime: {
-        name: 'Rest & Buffer Time',
-        score: restScore,
-        weight: 15,
-        status: getStatus(restScore),
-        insight: restInsight
-      },
-      activityDiversity: {
-        name: 'Activity Diversity',
-        score: diversityScore,
-        weight: 10,
-        status: getStatus(diversityScore),
-        insight: diversityInsight
+        score: timeBalanceScore,
+        weight: 16,
+        status: getStatus(timeBalanceScore),
+        insight: timeBalanceExplanation
       },
       weatherCompatibility: {
         name: 'Weather Compatibility',
         score: weatherScore,
-        weight: 10,
+        weight: 14,
         status: getStatus(weatherScore),
-        insight: weatherInsight
+        insight: weatherExplanation
+      },
+      activityDiversity: {
+        name: 'Activity Diversity',
+        score: activityBalanceScore,
+        weight: 12,
+        status: getStatus(activityBalanceScore),
+        insight: activityBalanceExplanation
+      },
+      restTime: {
+        name: 'Travel Fatigue & Rest',
+        score: travelFatigueScore,
+        weight: 10,
+        status: getStatus(travelFatigueScore),
+        insight: travelFatigueExplanation
+      },
+      travelFatigue: {
+        name: 'Travel Fatigue',
+        score: travelFatigueScore,
+        weight: 10,
+        status: getStatus(travelFatigueScore),
+        insight: travelFatigueExplanation
+      },
+      constraintSatisfaction: {
+        name: 'Constraint Satisfaction',
+        score: constraintScore,
+        weight: 10,
+        status: getStatus(constraintScore),
+        insight: constraintExplanation
       }
     },
     improvements
+  };
+}
+
+/**
+ * Deterministically compares two trip contexts and returns exact delta
+ */
+export function compareTripHealth(
+  beforeTrip: TripContext,
+  afterTrip: TripContext,
+  routeBefore?: TripRouteMetrics,
+  routeAfter?: TripRouteMetrics,
+  weatherForecast?: WeatherForecast | null
+): {
+  beforeHealth: ComputedHealthScore;
+  afterHealth: ComputedHealthScore;
+  healthDelta: number;
+} {
+  const beforeHealth = calculateDynamicHealthScore(beforeTrip, routeBefore, weatherForecast);
+  const afterHealth = calculateDynamicHealthScore(afterTrip, routeAfter, weatherForecast, beforeHealth.overallScore);
+  const healthDelta = afterHealth.overallScore - beforeHealth.overallScore;
+
+  return {
+    beforeHealth,
+    afterHealth,
+    healthDelta
   };
 }

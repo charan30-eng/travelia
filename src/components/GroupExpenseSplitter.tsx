@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
   Plus, 
@@ -12,12 +12,14 @@ import {
   X,
   CreditCard,
   Sparkles,
-  PieChart
+  PieChart,
+  Trash2
 } from 'lucide-react';
 import { TripPlan, GroupMember, GroupExpense, MemberBalanceSummary, Currency } from '../types';
 import { INITIAL_GROUP_MEMBERS, INITIAL_GROUP_EXPENSES, calculateMemberBalances } from '../data/featureData';
 import { formatCurrency } from '../data/mockData';
 import confetti from 'canvas-confetti';
+import { tripClient } from '../services/tripClient';
 
 interface GroupExpenseSplitterProps {
   trip: TripPlan;
@@ -31,6 +33,23 @@ export const GroupExpenseSplitter: React.FC<GroupExpenseSplitterProps> = ({
   const [members] = useState<GroupMember[]>(INITIAL_GROUP_MEMBERS);
   const [expenses, setExpenses] = useState<GroupExpense[]>(INITIAL_GROUP_EXPENSES);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Sync expenses from backend database
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTripExpenses = async () => {
+      try {
+        const serverExpenses = await tripClient.getExpenses(trip.id);
+        if (isMounted && serverExpenses && serverExpenses.length > 0) {
+          setExpenses(serverExpenses);
+        }
+      } catch (err) {
+        console.warn('[GroupExpenseSplitter] Fallback to local expenses:', err);
+      }
+    };
+    fetchTripExpenses();
+    return () => { isMounted = false; };
+  }, [trip.id]);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -75,6 +94,11 @@ export const GroupExpenseSplitter: React.FC<GroupExpenseSplitterProps> = ({
     setNote('');
     setShowAddModal(false);
 
+    // Persist to backend database
+    tripClient.addExpense(trip.id, newExp).catch(err => {
+      console.warn('[GroupExpenseSplitter] Background expense persist error:', err);
+    });
+
     try {
       confetti({
         particleCount: 40,
@@ -82,6 +106,13 @@ export const GroupExpenseSplitter: React.FC<GroupExpenseSplitterProps> = ({
         origin: { y: 0.7 }
       });
     } catch (e) {}
+  };
+
+  const handleDeleteExpense = (expenseId: string) => {
+    setExpenses(prev => prev.filter(e => e.id !== expenseId));
+    tripClient.deleteExpense(trip.id, expenseId).catch(err => {
+      console.warn('[GroupExpenseSplitter] Failed to delete expense from backend:', err);
+    });
   };
 
   const handleSettleDebt = (debtorName: string, creditorName: string, amount: number) => {
@@ -303,13 +334,23 @@ export const GroupExpenseSplitter: React.FC<GroupExpenseSplitterProps> = ({
                 </p>
               </div>
 
-              <div className="text-right sm:self-center">
-                <span className="font-display font-extrabold text-lg text-[#191919] block">
-                  {formatCurrency(exp.totalAmount, currency)}
-                </span>
-                <span className="text-[11px] text-neutral-500 font-semibold">
-                  {formatCurrency(Math.round(exp.totalAmount / exp.splitAmongIds.length), currency)} / person
-                </span>
+              <div className="flex items-center gap-4 self-end sm:self-center">
+                <div className="text-right">
+                  <span className="font-display font-extrabold text-lg text-[#191919] block">
+                    {formatCurrency(exp.totalAmount, currency)}
+                  </span>
+                  <span className="text-[11px] text-neutral-500 font-semibold">
+                    {formatCurrency(Math.round(exp.totalAmount / exp.splitAmongIds.length), currency)} / person
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteExpense(exp.id)}
+                  className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete expense"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           ))}

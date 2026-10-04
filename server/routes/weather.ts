@@ -15,6 +15,7 @@ import {
 } from '../services/weatherService';
 import { evaluateDayWeatherImpact } from '../services/weatherImpactService';
 import { WeatherReplanRequest } from '../types/ai';
+import { isValidCoordinate, isValidDateString, validateNumberRange } from '../middleware/validation';
 
 const router = Router();
 
@@ -23,19 +24,39 @@ router.get('/forecast', async (req: Request, res: Response) => {
   try {
     const destination = (req.query.destination as string) || 'Goa';
     const startDate = req.query.startDate as string | undefined;
-    const daysCount = parseInt(req.query.days as string || req.query.daysCount as string || '3', 10);
+    const daysRaw = req.query.days as string || req.query.daysCount as string || '3';
+    const daysCount = parseInt(daysRaw, 10);
+
+    const daysValidation = validateNumberRange(daysCount, 1, 16, 'days');
+    if (!daysValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DAYS', message: daysValidation.error }
+      });
+    }
+
+    if (startDate && !isValidDateString(startDate)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DATE', message: 'startDate must be in YYYY-MM-DD format' }
+      });
+    }
 
     let coords;
-    if (req.query.lat && req.query.lng) {
-      const lat = parseFloat(req.query.lat as string);
-      const lng = parseFloat(req.query.lng as string);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        coords = { latitude: lat, longitude: lng };
+    if (req.query.lat !== undefined || req.query.lng !== undefined) {
+      const coordCheck = isValidCoordinate(req.query.lat, req.query.lng);
+      if (!coordCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_COORDINATES', message: coordCheck.error }
+        });
       }
+      coords = { latitude: parseFloat(req.query.lat as string), longitude: parseFloat(req.query.lng as string) };
     }
 
     const forecast = await getAuthoritativeTripForecast(destination, startDate, daysCount, coords);
     res.json(forecast);
+
   } catch (error: any) {
     console.error('[API /weather/forecast] Error:', error);
     res.status(500).json({

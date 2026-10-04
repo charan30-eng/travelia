@@ -242,9 +242,75 @@ Simulates a hypothetical scenario without mutating the current trip.
 - **Request Body**:
 ```json
 {
-  "scenarioType": "reduce_budget" | "add_traveler" | "drop_day" | "rainy_day",
+  "scenarioType": "rainy_day" | "remove_activity" | "change_hotel" | "reduce_budget" | "add_traveler" | "drop_day",
   "tripContext": TripContext,
-  "parameters": { "targetBudget": 20000 }
+  "parameters": {
+    "activityName": "High-intensity coastal trek",
+    "newHotelName": "Candolim Boutique Heritage Stay",
+    "newHotelCategory": "boutique",
+    "targetBudget": 20000,
+    "priceDelta": 1200
+  }
 }
 ```
-- **Response `200 OK`**: Returns `WhatIfScenarioResponse` with before/after comparisons and impact summary.
+- **Response `200 OK`**: Returns `WhatIfScenarioResponse` with:
+  - `scenarioTitle`, `narrative`
+  - `currentState`: `{ totalBudget, healthScore, travelTimeHours, activityCount }`
+  - `projectedState`: `{ totalBudget, healthScore, travelTimeHours, activityCount }`
+  - `keyImpacts`: Array of verified impact statements
+  - `suggestedAction`: Proposed replan action with `type`, `label`, `description`, `estimatedSavings`, `healthScoreBefore`, `healthScoreAfter`, `healthScoreDelta`, and `optimizationResult`.
+
+---
+
+## 6. Trip Persistence Layer (`/api/trips/*`)
+
+ACID-compliant relational CRUD backed by Node.js native SQLite database (`travelia.db`).
+
+### `GET /api/trips`
+Lists all saved trips.
+- **Query Parameters**:
+  - `isDemo` (boolean, optional): filter demo vs user-persisted trips.
+  - `status` (string, optional): `"planning" | "confirmed" | "active" | "completed" | "archived"`
+- **Response `200 OK`**: Array of `TripPlan` entities ordered by `updated_at DESC`.
+
+### `GET /api/trips/:id`
+Retrieves a complete trip by ID.
+- **Response `200 OK`**: Complete `TripPlan` entity.
+- **Response `404 Not Found`**: Trip does not exist.
+
+### `POST /api/trips`
+Creates and atomically persists a new trip itinerary.
+- **Request Body**: Partial or full `TripPlan` object.
+- **Response `201 Created`**: Saved `TripPlan` with generated `id`, `createdAt`, `updatedAt`.
+
+### `PUT /api/trips/:id`
+Updates an existing trip (e.g. itinerary edits, budget updates, status change).
+- **Request Body**: Partial `TripPlan` updates.
+- **Response `200 OK`**: Updated `TripPlan` entity.
+
+### `DELETE /api/trips/:id`
+Deletes a trip from the database.
+- **Response `200 OK`**: `{ "success": true, "deletedId": "..." }`
+
+---
+
+## 7. System Reliability & Metrics (`/api/system/*`)
+
+### `GET /api/system/metrics`
+Returns operational reliability metrics across all providers.
+- **Response `200 OK`**:
+```json
+{
+  "uptimeSeconds": 3600,
+  "providers": {
+    "google_places": { "calls": 42, "failures": 0, "avgLatencyMs": 185 },
+    "osrm": { "calls": 68, "failures": 1, "avgLatencyMs": 95 },
+    "open_meteo": { "calls": 24, "failures": 0, "avgLatencyMs": 120 },
+    "gemini": { "calls": 18, "failures": 0, "avgLatencyMs": 620 }
+  },
+  "cache": {
+    "places": { "hits": 31, "misses": 11, "hitRatio": 0.738 },
+    "weather": { "hits": 18, "misses": 6, "hitRatio": 0.750 }
+  }
+}
+```

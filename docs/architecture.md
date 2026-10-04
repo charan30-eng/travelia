@@ -209,23 +209,34 @@ travelia/
 │   └── roadmap-progress.md
 ├── server/                    # Express backend
 │   ├── index.ts               # Server entry point & API route mounting
-│   ├── routes/                # Express router modules (ai, places, route, weather)
+│   ├── db/                    # SQLite database connection & schema migrations
+│   ├── repositories/          # TripRepository with ACID SQLite persistence
+│   ├── middleware/            # Security headers, rate limiting, and request validation
+│   ├── routes/                # Express router modules (ai, places, route, weather, trips, system)
 │   ├── services/              # Domain services & deterministic engines
-│   ├── prompts/               # Structured system prompts (chatPrompt.ts)
-│   ├── types/                 # Backend TypeScript contracts (ai, places, route, weather)
-│   ├── test_deterministic_engine.ts # Deterministic savings & cost tests
-│   ├── test_route_intelligence.ts   # 15 route intelligence test scenarios
-│   ├── test_weather_intelligence.ts # 17 weather intelligence test scenarios
-│   ├── test_places_data_layer.ts    # Places caching, fallback & integrity tests
-│   ├── test_ai_scenarios.ts         # Live HTTP verification of AI endpoints
-│   └── verify_copilot.ts            # Copilot prompt scenario test suite
+│   │   ├── itineraryOptimizer.ts    # Multi-objective Pareto replanning engine
+│   │   ├── healthScoreService.ts    # 7-dimension deterministic health scoring
+│   │   ├── whatIfSimulator.ts       # Rain, budget, stay & activity simulation
+│   │   ├── providerReliability.ts   # Resiliency wrapper with backoff & fallbacks
+│   │   └── metricsService.ts        # Observability & safe logging
+│   ├── prompts/               # Structured system prompts
+│   ├── types/                 # Backend TypeScript contracts
+│   └── test_*.ts              # 10 automated test suites
 └── src/                       # React frontend
     ├── main.tsx               # DOM root mount
-    ├── App.tsx                # Master state controller, tab router, modal coordinators
-    ├── types.ts               # Frontend TypeScript domain interfaces
-    ├── index.css              # Global styles & Tailwind imports
-    ├── components/            # UI components and view controllers (21 files)
-    ├── data/                  # Curated catalogs, mock generators, and Java code base
-    ├── services/              # Frontend API clients (aiClient.ts, placesClient.ts)
+    ├── App.tsx                # Master state controller & tab router
+    ├── types.ts               # Frontend domain TypeScript definitions
+    ├── index.css              # Global styles & design system tokens
+    ├── components/            # UI components and view controllers
+    │   ├── HomeView.tsx             # 7-Stage Engine flow & 6 intelligence pillars
+    │   ├── TripDashboardView.tsx    # Executive Trip Intelligence Bar & Master Hub
+    │   ├── WhatIfSimulatorSection.tsx# Interactive What-If simulation cards
+    │   ├── AIOptimizationModal.tsx  # Side-by-side calculated Before/After comparison
+    │   ├── TripHealthScoreCard.tsx  # Transparent 7-dimension score diagnostics
+    │   ├── AIChatModal.tsx          # 9-Domain grounded Copilot with tool pills
+    │   ├── MyTripsView.tsx          # Prioritized persisted trip portfolio & CRUD
+    │   ├── DiscoverView.tsx         # Google Places verified sights explorer
+    │   └── ...                      # Budget, Flights, Safety, Map, and Modals
+    ├── services/              # Frontend API clients (aiClient, tripClient, placesClient)
     └── utils/                 # Date, time, and forecast window helpers
 ```

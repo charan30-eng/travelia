@@ -240,21 +240,30 @@ export const buildDayWaypoints = (
   let hotelName = `${destination.split(',')[0]} Grand Heritage Stay`;
   let hotelLocation = `Central ${destination.split(',')[0]}`;
 
+  let hotelCoords: [number, number] = profile.center;
+
   if (Array.isArray(trip?.hotels) && trip.hotels.length > 0) {
     const selected = trip.hotels.find((h: any) => h.selected) || trip.hotels[0];
     if (selected) {
       hotelName = selected.name;
       hotelLocation = selected.location;
+      if (selected.coordinates?.latitude && selected.coordinates?.longitude) {
+        hotelCoords = [selected.coordinates.latitude, selected.coordinates.longitude];
+      }
     }
   } else if (trip?.existingBookings?.hotel) {
     hotelName = trip.existingBookings.hotel;
     hotelLocation = `${destination.split(',')[0]} Hotel Quarter`;
   }
 
-  const hotelLandmark = profile.landmarks.find(l => 
-    l.name.toLowerCase().includes('hotel') || l.name.toLowerCase().includes('stay') || l.name.toLowerCase().includes('resort')
-  );
-  const hotelCoords: [number, number] = hotelLandmark ? hotelLandmark.coords : profile.center;
+  if (hotelCoords === profile.center) {
+    const hotelLandmark = profile.landmarks.find(l => 
+      l.name.toLowerCase().includes('hotel') || l.name.toLowerCase().includes('stay') || l.name.toLowerCase().includes('resort')
+    );
+    if (hotelLandmark) {
+      hotelCoords = hotelLandmark.coords;
+    }
+  }
 
   const waypoints: RouteWaypoint[] = [];
 
@@ -283,21 +292,35 @@ export const buildDayWaypoints = (
       const actNameLower = (act.activity || '').toLowerCase();
       const actLocLower = (act.location || '').toLowerCase();
 
-      const matchedLandmark = profile.landmarks.find(l => {
-        const lLower = l.name.toLowerCase();
+      // Check if matches a tourist place in trip.touristPlaces with authoritative coordinates
+      const matchedPlace = (trip?.touristPlaces || []).find((p: any) => {
+        const pName = (p.name || '').toLowerCase();
         return (
-          (actLocLower && (lLower.includes(actLocLower) || actLocLower.includes(lLower))) ||
-          (actNameLower && (lLower.includes(actNameLower) || actNameLower.includes(lLower.split(' ')[0])))
+          (pName && actNameLower.includes(pName)) ||
+          (pName && pName.includes(actNameLower)) ||
+          (actLocLower && (pName.includes(actLocLower) || actLocLower.includes(pName)))
         );
       });
 
-      if (matchedLandmark) {
-        coords = matchedLandmark.coords;
-      } else if (idx < profile.landmarks.length) {
-        coords = profile.landmarks[idx].coords;
+      if (matchedPlace?.coordinates?.latitude && matchedPlace?.coordinates?.longitude) {
+        coords = [matchedPlace.coordinates.latitude, matchedPlace.coordinates.longitude];
       } else {
-        // Fallback to destination center without fabricating sinusoidal pseudo-points
-        coords = profile.center;
+        const matchedLandmark = profile.landmarks.find(l => {
+          const lLower = l.name.toLowerCase();
+          return (
+            (actLocLower && (lLower.includes(actLocLower) || actLocLower.includes(lLower))) ||
+            (actNameLower && (lLower.includes(actNameLower) || actNameLower.includes(lLower.split(' ')[0])))
+          );
+        });
+
+        if (matchedLandmark) {
+          coords = matchedLandmark.coords;
+        } else if (idx < profile.landmarks.length) {
+          coords = profile.landmarks[idx].coords;
+        } else {
+          // Fallback to destination center without fabricating sinusoidal pseudo-points
+          coords = profile.center;
+        }
       }
     }
 

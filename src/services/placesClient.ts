@@ -133,32 +133,43 @@ class PlacesClient {
         ? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop'
         : 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?q=80&w=600&auto=format&fit=crop');
 
-    // Base estimated price reference: Google priceLevel (0-4) is NOT an exact hotel room price
-    // We clearly distinguish estimated guidance vs authentic live booking rates
-    const pricePerNight = place.estimatedCost || 
-      (place.priceLevel === 4 ? 7500 : place.priceLevel === 3 ? 5500 : place.priceLevel === 1 ? 2800 : 4200);
+    // Hotel Rule: Google Places priceLevel (0-4) represents a general price tier, NOT a nightly room tariff.
+    // If an authoritative room price is unavailable, strictly set pricePerNight = null rather than fabricating a number.
+    const pricePerNight = place.estimatedCost ?? null;
+    const totalStayPrice = pricePerNight != null ? pricePerNight * nights : null;
+
+    const dataStatus = place.dataStatus || 'demo';
+    const tag = dataStatus === 'live'
+      ? 'Live Google Stay'
+      : dataStatus === 'cached'
+      ? 'Cached Live Stay'
+      : dataStatus === 'partial'
+      ? 'Partial Place'
+      : 'Curated Demo Stay';
 
     return {
       id: place.id,
       name: place.name,
       location: place.address || `${place.name} Area`,
-      rating: place.rating || 4.5,
-      reviewsCount: place.userRatingsTotal || 120,
+      rating: place.rating,
+      reviewsCount: place.userRatingsTotal,
       pricePerNight,
-      totalStayPrice: pricePerNight * nights,
+      totalStayPrice,
       image,
-      amenities: place.amenities || ['Verified Stay', 'Wi-Fi', 'Air Conditioning', 'Central Access'],
-      description: place.description || `${place.name} is a verified accommodation in ${place.address || 'prime central location'}.`,
-      tag: place.dataStatus === 'live' ? 'Live Google Place' : place.dataStatus === 'cached' ? 'Cached Live Place' : 'Curated Demo Stay',
+      amenities: place.amenities || ['Verified Stay', 'Central Access', 'Wi-Fi', 'Air Conditioning'],
+      description: place.description || `${place.name} is an accommodation in ${place.address || 'prime central location'}.`,
+      tag,
       selected: index === 0,
       source: place.source,
-      dataStatus: place.dataStatus,
-      providerId: place.providerId,
+      sourceId: place.sourceId || place.id,
+      dataStatus,
+      providerId: place.providerId || place.id,
       coordinates: { latitude: place.latitude, longitude: place.longitude },
       address: place.address,
       websiteUri: place.websiteUri,
       phoneNumber: place.phoneNumber,
-      openingHours: place.openingHours
+      openingHours: place.openingHours,
+      retrievedAt: place.retrievedAt || place.fetchedAt
     };
   }
 
@@ -173,28 +184,41 @@ class PlacesClient {
         ? 'https://images.unsplash.com/photo-1590050752117-238cb0fb12b1?q=80&w=600&auto=format&fit=crop'
         : 'https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=600&auto=format&fit=crop');
 
-    const formattedCategory = place.category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const formattedCategory = (place.category || 'tourist_attraction').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    const entryCost = place.priceLevel === 0 ? 0 : (place.estimatedCost ?? null);
+    const dataStatus = place.dataStatus || 'demo';
+    const aiTag = dataStatus === 'live'
+      ? 'Live Verified Sight'
+      : dataStatus === 'cached'
+      ? 'Cached Live Sight'
+      : dataStatus === 'partial'
+      ? 'Partial Sight'
+      : 'Demo Highlight';
 
     return {
       id: place.id,
       name: place.name,
       location: place.address || place.name,
-      rating: place.rating || 4.6,
+      rating: place.rating,
       estimatedDuration: place.estimatedDuration || '2–3 Hours',
-      entryCost: place.priceLevel === 0 ? 0 : (place.estimatedCost ?? 0),
+      entryCost,
       image,
-      aiTag: place.dataStatus === 'live' ? 'Live Verified Sight' : place.dataStatus === 'cached' ? 'Cached Live Sight' : 'Demo Highlight',
+      aiTag,
       category: formattedCategory,
       description: place.description || `${place.name} is a renowned ${formattedCategory.toLowerCase()} in ${place.address || 'the area'}.`,
       bestTimeToVisit: place.bestTimeToVisit || 'Morning / Late Afternoon',
       added: true,
       source: place.source,
-      dataStatus: place.dataStatus,
-      providerId: place.providerId,
+      sourceId: place.sourceId || place.id,
+      dataStatus,
+      providerId: place.providerId || place.id,
       coordinates: { latitude: place.latitude, longitude: place.longitude },
       address: place.address,
       websiteUri: place.websiteUri,
-      phoneNumber: place.phoneNumber
+      phoneNumber: place.phoneNumber,
+      openingHours: place.openingHours,
+      retrievedAt: place.retrievedAt || place.fetchedAt
     };
   }
 }

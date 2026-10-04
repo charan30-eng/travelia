@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { chatWithTraveliaAI } from '../services/geminiService';
 import { optimizeTripItinerary } from '../services/itineraryOptimizer';
-import { calculateDynamicHealthScore } from '../services/healthScoreService';
+import { calculateDynamicHealthScore, compareTripHealth } from '../services/healthScoreService';
 import { replanItineraryForWeather } from '../services/weatherService';
 import { simulateWhatIfScenario } from '../services/whatIfSimulator';
-import { AIChatRequest, TripContext, WeatherReplanRequest, WhatIfScenarioRequest } from '../types/ai';
+import { AIChatRequest, TripContext, WeatherReplanRequest, WhatIfScenarioRequest, PackingListRequest } from '../types/ai';
+import { COPILOT_TOOL_DECLARATIONS } from '../services/copilotTools';
+import { sanitizeUserPreferences, personalizeTripItinerary } from '../services/personalizationService';
+import { generateContextAwarePackingList } from '../services/packingService';
+
 
 const router = Router();
 
@@ -26,8 +30,19 @@ router.get('/status', (req: Request, res: Response) => {
       'real_time_health_score',
       'weather_disruption_replan',
       'what_if_simulation',
-      'natural_language_copilot'
+      'natural_language_copilot',
+      'authoritative_tools_orchestration'
     ]
+  });
+});
+
+// Authoritative Backend Capabilities (12 Tools)
+router.get('/tools', (req: Request, res: Response) => {
+  res.json({
+    count: COPILOT_TOOL_DECLARATIONS.length,
+    tools: COPILOT_TOOL_DECLARATIONS,
+    status: 'active',
+    retrievedAt: new Date().toISOString()
   });
 });
 
@@ -53,16 +68,25 @@ router.post('/chat', async (req: Request, res: Response) => {
 // Trip Optimization Engine
 router.post('/optimize', (req: Request, res: Response) => {
   try {
-    const { tripContext, targetSavingsPercentage } = req.body as {
+    const { tripContext, targetSavingsPercentage, options, objective, hardConstraints } = req.body as {
       tripContext: TripContext;
       targetSavingsPercentage?: number;
+      options?: any;
+      objective?: any;
+      hardConstraints?: any;
     };
 
     if (!tripContext || !tripContext.itinerary) {
       return res.status(400).json({ error: 'Valid tripContext with itinerary is required' });
     }
 
-    const result = optimizeTripItinerary(tripContext, targetSavingsPercentage);
+    const mergedOptions = {
+      ...options,
+      ...(objective ? { objective } : {}),
+      ...(hardConstraints ? { hardConstraints } : {})
+    };
+
+    const result = optimizeTripItinerary(tripContext, targetSavingsPercentage, mergedOptions);
     res.json(result);
   } catch (error: any) {
     console.error('[API /optimize] Error:', error);
@@ -115,9 +139,13 @@ router.post('/weather-replan', (req: Request, res: Response) => {
 router.post('/what-if', (req: Request, res: Response) => {
   try {
     const request = req.body as WhatIfScenarioRequest;
-    if (!request?.tripContext) {
-      return res.status(400).json({ error: 'tripContext is required for what-if simulation' });
+    if (!request?.tripContext || !request?.scenarioType) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'MISSING_PARAMETERS', message: 'tripContext and scenarioType are required for what-if simulation' }
+      });
     }
+
 
     const result = simulateWhatIfScenario(request);
     res.json(result);
@@ -130,4 +158,93 @@ router.post('/what-if', (req: Request, res: Response) => {
   }
 });
 
+// Phase 8: Personalized Itinerary Adaptation
+router.post('/personalized-plan', (req: Request, res: Response) => {
+  try {
+    const { tripContext, userPreferences } = req.body as {
+      tripContext: TripContext;
+      userPreferences?: any;
+    };
+
+    if (!tripContext || !tripContext.itinerary) {
+      return res.status(400).json({ error: 'tripContext with valid itinerary is required' });
+    }
+
+    const { sanitized, rejectedSensitiveFields } = sanitizeUserPreferences(userPreferences || {});
+    const personalizationResult = personalizeTripItinerary(tripContext, sanitized);
+    
+    // Exact deterministic health score comparison
+    const healthComparison = compareTripHealth(
+      tripContext, 
+      personalizationResult.personalizedTrip
+    );
+
+    res.json({
+      ...personalizationResult,
+      beforeHealth: healthComparison.beforeHealth,
+      afterHealth: healthComparison.afterHealth,
+      healthDelta: healthComparison.healthDelta,
+      rejectedSensitiveFields
+    });
+  } catch (error: any) {
+    console.error('[API /personalized-plan] Error:', error);
+    res.status(500).json({
+      error: 'Personalization failed',
+      message: error?.message || 'Unknown error'
+    });
+  }
+});
+
+// Phase 8: Context-Aware Packing List Generator
+router.post('/packing-list', (req: Request, res: Response) => {
+  try {
+    const request = req.body as PackingListRequest;
+    if (!request?.destination) {
+      return res.status(400).json({ error: 'destination is required for packing list' });
+    }
+
+    const result = generateContextAwarePackingList({
+      destination: request.destination,
+      duration: request.duration || 3,
+      tripStyle: request.tripStyle,
+      activities: request.activities,
+      weatherForecast: request.weatherForecast,
+      userPreferences: request.userPreferences
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('[API /packing-list] Error:', error);
+    res.status(500).json({
+      error: 'Failed to generate packing list',
+      message: error?.message || 'Unknown error'
+    });
+  }
+});
+
+// Phase 8: Exact Trip Health Comparison (Delta = afterScore - beforeScore)
+router.post('/compare-health', (req: Request, res: Response) => {
+  try {
+    const { beforeTrip, afterTrip, weatherForecast } = req.body as {
+      beforeTrip: TripContext;
+      afterTrip: TripContext;
+      weatherForecast?: any;
+    };
+
+    if (!beforeTrip || !afterTrip) {
+      return res.status(400).json({ error: 'both beforeTrip and afterTrip are required' });
+    }
+
+    const result = compareTripHealth(beforeTrip, afterTrip, undefined, undefined, weatherForecast);
+    res.json(result);
+  } catch (error: any) {
+    console.error('[API /compare-health] Error:', error);
+    res.status(500).json({
+      error: 'Health comparison failed',
+      message: error?.message || 'Unknown error'
+    });
+  }
+});
+
 export default router;
+

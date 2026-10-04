@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { HomeView } from './components/HomeView';
 import { PlannerView } from './components/PlannerView';
@@ -10,6 +10,7 @@ import { AIChatModal } from './components/AIChatModal';
 import { JavaCodeViewer } from './components/JavaCodeViewer';
 import { AddActivityModal } from './components/AddActivityModal';
 import { AIOptimizationModal } from './components/AIOptimizationModal';
+import { ServiceStatusFeedback } from './components/ServiceStatusFeedback';
 import { 
   TripPlan, 
   Currency, 
@@ -29,6 +30,12 @@ import { CountryCurrencyInfo, detectCountryFromDestination } from './data/curren
 import { optimizeTrip, OptimizationResult } from './services/aiClient';
 import { calculateTravelDateRange, calculateTripDayDate } from './utils/dateUtils';
 import { placesClient } from './services/placesClient';
+import { tripClient } from './services/tripClient';
+import { hotelClient } from './services/hotelClient';
+import { currencyClient } from './services/currencyClient';
+import { applyLiveExchangeRates } from './data/currencyHelper';
+import { applyLiveRatesToGlobalCurrencies } from './data/mockData';
+
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
@@ -37,6 +44,95 @@ export default function App() {
   const [savedTrips, setSavedTrips] = useState<TripPlan[]>(INITIAL_SAVED_TRIPS);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [plannerDestination, setPlannerDestination] = useState<string>('');
+
+  // Synchronize Live Currency Rates from Backend Provider
+  useEffect(() => {
+    let isCancelled = false;
+    const syncLiveCurrency = async () => {
+      try {
+        const ratesRes = await currencyClient.getRates('INR');
+        if (!isCancelled && ratesRes?.rates) {
+          applyLiveExchangeRates(ratesRes.rates, ratesRes.source, ratesRes.dataStatus, ratesRes.retrievedAt);
+          applyLiveRatesToGlobalCurrencies(ratesRes.rates);
+        }
+      } catch (err) {
+        console.warn('[App] Live currency sync fallback:', err);
+      }
+    };
+    syncLiveCurrency();
+    return () => { isCancelled = true; };
+  }, []);
+
+  // Initial Enrichment from Backend Places & Hotels Data Layer
+  // Connects backend authoritative places and inventory to currentTrip
+  useEffect(() => {
+    let isCancelled = false;
+    const enrichInitialTrip = async () => {
+      try {
+        const cleanDest = (DEFAULT_GOA_TRIP.destination || '').split(',')[0].trim();
+        const [hotelsRes, attractionsRes] = await Promise.all([
+          hotelClient.searchHotels(cleanDest, { nights: DEFAULT_GOA_TRIP.nights, limit: 4 }),
+          placesClient.searchAttractions(cleanDest, 6)
+        ]);
+
+        if (isCancelled) return;
+        if ((hotelsRes?.hotels && hotelsRes.hotels.length > 0) || (attractionsRes?.places && attractionsRes.places.length > 0)) {
+          setCurrentTrip(prev => {
+            if ((prev.destination || '').split(',')[0].trim() !== cleanDest) return prev;
+            return {
+              ...prev,
+              hotels: hotelsRes?.hotels?.length > 0
+                ? hotelsRes.hotels.map(h => ({
+                    id: h.id,
+                    name: h.name,
+                    location: h.location || h.address || `${h.name} Area`,
+                    rating: h.rating || 4.5,
+                    reviewsCount: h.reviewsCount || 120,
+                    pricePerNight: h.price?.perNight ?? null,
+                    totalStayPrice: h.price?.total ?? null,
+                    image: h.photos?.[0] || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=600&auto=format&fit=crop',
+                    amenities: h.amenities || ['Verified Stay', 'Central Access', 'Wi-Fi', 'Air Conditioning'],
+                    description: h.description || `${h.name} accommodation in ${h.location}.`,
+                    tag: h.tag || (h.dataStatus === 'live' ? 'Live Provider Stay' : h.price ? 'Verified Stay' : 'Place Identity (Rates Unavailable)'),
+                    selected: h.selected ?? false,
+                    dataStatus: h.dataStatus
+                  }))
+                : prev.hotels,
+              touristPlaces: attractionsRes?.places?.length > 0
+                ? attractionsRes.places.map((p, idx) => placesClient.placeToTouristPlace(p, idx))
+                : prev.touristPlaces
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('[App] Places Data Layer initial enrichment fallback:', err);
+      }
+    };
+    enrichInitialTrip();
+    return () => { isCancelled = true; };
+  }, []);
+
+
+  // Fetch persisted trips from backend database
+  useEffect(() => {
+    let isMounted = true;
+    const loadSavedTrips = async () => {
+      try {
+        const serverTrips = await tripClient.getTrips();
+        if (isMounted && serverTrips && serverTrips.length > 0) {
+          setSavedTrips(serverTrips);
+          const matched = serverTrips.find(t => t.id === currentTrip.id);
+          if (matched) {
+            setCurrentTrip(matched);
+          }
+        }
+      } catch (err) {
+        console.warn('[App] Backend trip load fallback to demo:', err);
+      }
+    };
+    loadSavedTrips();
+    return () => { isMounted = false; };
+  }, []);
 
   // Shared Budget, Flight & Currency State connecting ALL budget tabs
   const [selectedCountry, setSelectedCountry] = useState<CountryCurrencyInfo>(() =>
@@ -112,6 +208,11 @@ export default function App() {
       });
     } catch (e) {}
 
+    // Persist optimization result without mutating or overwriting original trip records
+    tripClient.recordOptimization(currentTrip.id, result).catch(err => {
+      console.warn('[App] Background optimization record error:', err);
+    });
+
     setIsOptimizationModalOpen(false);
   };
 
@@ -141,15 +242,28 @@ export default function App() {
       // Fetch authentic live hotels and tourist places from Google Places Data Layer
       try {
         const [hotelsRes, attractionsRes] = await Promise.all([
-          placesClient.searchHotels(cleanDest, 4),
+          hotelClient.searchHotels(cleanDest, { nights: generated.nights, limit: 4 }),
           placesClient.searchAttractions(cleanDest, 6)
         ]);
 
-        if (hotelsRes && hotelsRes.places.length > 0) {
-          generated.hotels = hotelsRes.places.map((p, idx) => 
-            placesClient.placeToHotel(p, idx, generated.nights)
-          );
+        if (hotelsRes && hotelsRes.hotels && hotelsRes.hotels.length > 0) {
+          generated.hotels = hotelsRes.hotels.map(h => ({
+            id: h.id,
+            name: h.name,
+            location: h.location || h.address || `${h.name} Area`,
+            rating: h.rating || 4.5,
+            reviewsCount: h.reviewsCount || 120,
+            pricePerNight: h.price?.perNight ?? null,
+            totalStayPrice: h.price?.total ?? null,
+            image: h.photos?.[0] || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=600&auto=format&fit=crop',
+            amenities: h.amenities || ['Verified Stay', 'Central Access', 'Wi-Fi', 'Air Conditioning'],
+            description: h.description || `${h.name} accommodation in ${h.location}.`,
+            tag: h.tag || (h.dataStatus === 'live' ? 'Live Provider Stay' : h.price ? 'Verified Stay' : 'Place Identity (Rates Unavailable)'),
+            selected: h.selected ?? false,
+            dataStatus: h.dataStatus
+          }));
         }
+
 
         if (attractionsRes && attractionsRes.places.length > 0) {
           generated.touristPlaces = attractionsRes.places.map((p, idx) => 
@@ -277,15 +391,22 @@ export default function App() {
     setActiveTab('planner');
   };
 
-  // Save Trip to My Trips
-  const handleSaveTrip = (tripToSave: TripPlan) => {
+  // Save Trip to My Trips & Persist to Backend SQLite
+  const handleSaveTrip = async (tripToSave: TripPlan) => {
+    const updatedTrip = { ...tripToSave, status: 'saved' as const };
+    
+    // Optimistic UI state update
     setSavedTrips((prev) => {
-      const exists = prev.some((t) => t.id === tripToSave.id);
+      const exists = prev.some((t) => t.id === updatedTrip.id);
       if (exists) {
-        return prev.map((t) => (t.id === tripToSave.id ? { ...tripToSave, status: 'saved' } : t));
+        return prev.map((t) => (t.id === updatedTrip.id ? updatedTrip : t));
       }
-      return [{ ...tripToSave, status: 'saved' }, ...prev];
+      return [updatedTrip, ...prev];
     });
+
+    if (currentTrip.id === updatedTrip.id) {
+      setCurrentTrip(updatedTrip);
+    }
 
     try {
       confetti({
@@ -294,11 +415,85 @@ export default function App() {
         origin: { y: 0.7 }
       });
     } catch (e) {}
+
+    // Real backend persistence
+    try {
+      const existing = await tripClient.getTrip(updatedTrip.id);
+      let saved: TripPlan;
+      if (existing) {
+        saved = await tripClient.updateTrip(updatedTrip.id, updatedTrip);
+      } else {
+        saved = await tripClient.createTrip(updatedTrip);
+      }
+      setSavedTrips(prev => prev.map(t => t.id === saved.id ? saved : t));
+      if (currentTrip.id === saved.id) {
+        setCurrentTrip(saved);
+      }
+    } catch (err) {
+      console.warn('[App] Failed to persist trip to backend:', err);
+    }
   };
 
-  // Delete Trip from My Trips
-  const handleDeleteTrip = (tripId: string) => {
+  // Delete Trip from My Trips & Database
+  const handleDeleteTrip = async (tripId: string) => {
     setSavedTrips((prev) => prev.filter((t) => t.id !== tripId));
+    try {
+      await tripClient.deleteTrip(tripId);
+    } catch (err) {
+      console.warn('[App] Failed to delete trip from backend:', err);
+    }
+  };
+
+  // Duplicate Trip
+  const handleDuplicateTrip = async (trip: TripPlan) => {
+    const duplicated: TripPlan = {
+      ...trip,
+      id: `trip-copy-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      destination: `${trip.destination} (Copy)`,
+      isDemo: false
+    };
+    setSavedTrips((prev) => [duplicated, ...prev]);
+    try {
+      await tripClient.createTrip(duplicated);
+    } catch (err) {
+      console.warn('[App] Failed to persist duplicated trip:', err);
+    }
+  };
+
+  // Archive / Restore Trip
+  const handleArchiveTrip = async (tripId: string) => {
+    setSavedTrips((prev) =>
+      prev.map((t) => {
+        if (t.id === tripId) {
+          const isCurrentlyArchived = t.status === 'completed' || (t as any).isArchived;
+          const nextStatus = isCurrentlyArchived ? 'planning' : 'completed';
+          return {
+            ...t,
+            status: nextStatus as any,
+            isArchived: !isCurrentlyArchived
+          };
+        }
+        return t;
+      })
+    );
+    try {
+      const target = savedTrips.find((t) => t.id === tripId);
+      if (target) {
+        const isCurrentlyArchived = target.status === 'completed' || (target as any).isArchived;
+        await tripClient.updateTrip(tripId, {
+          status: isCurrentlyArchived ? ('planning' as any) : ('completed' as any)
+        });
+      }
+    } catch (err) {
+      console.warn('[App] Failed to update archive status:', err);
+    }
+  };
+
+  // Edit Trip
+  const handleEditTrip = (trip: TripPlan) => {
+    setCurrentTrip(trip);
+    setPlannerDestination(trip.destination);
+    setActiveTab('planner');
   };
 
   // Open Saved Trip into active Dashboard
@@ -316,7 +511,9 @@ export default function App() {
         selected: h.id === hotel.id
       }));
 
-      const newHotelBudget = hotel.pricePerNight * prev.nights;
+      const newHotelBudget = hotel.pricePerNight != null 
+        ? hotel.pricePerNight * prev.nights 
+        : prev.budget.hotel;
       const flightCost = prev.budget.flights || 0;
       const newTotal = newHotelBudget + flightCost + prev.budget.food + prev.budget.transportation + prev.budget.activities + prev.budget.miscellaneous;
 
@@ -376,7 +573,8 @@ export default function App() {
     setIsAddActivityOpen(true);
   };
 
-  const handleConfirmAddActivity = (activity: ItineraryActivity) => {
+  const handleConfirmAddActivity = async (activity: ItineraryActivity) => {
+    // Optimistic state update
     setCurrentTrip((prev) => ({
       ...prev,
       itinerary: prev.itinerary.map((d) =>
@@ -385,6 +583,26 @@ export default function App() {
           : d
       )
     }));
+
+    // Persist to backend database via tripClient
+    try {
+      const persistedActivity = await tripClient.addActivity(currentTrip.id, activeActivityDay, activity);
+      if (persistedActivity) {
+        setCurrentTrip((prev) => ({
+          ...prev,
+          itinerary: prev.itinerary.map((d) =>
+            d.dayNumber === activeActivityDay
+              ? {
+                  ...d,
+                  activities: d.activities.map((a) => (a.id === activity.id ? persistedActivity : a))
+                }
+              : d
+          )
+        }));
+      }
+    } catch (err) {
+      console.warn('[App] Background activity persist error:', err);
+    }
   };
 
   // AI Chat Actions
@@ -522,50 +740,70 @@ export default function App() {
         )}
 
         {activeTab === 'dashboard' && (
-          <TripDashboardView
-            trip={currentTrip}
-            onRegenerate={() => handleGenerateTrip(currentTrip.destination, currentTrip.days, currentTrip.travelers, currentTrip.preferences, currentTrip.travelDates, currentTrip.startDate)}
-            onEdit={() => {
-              setPlannerDestination(currentTrip.destination);
-              setActiveTab('planner');
-            }}
-            onSaveTrip={handleSaveTrip}
-            onViewBudget={handleViewBudget}
-            onSelectHotel={handleSelectHotel}
-            onTogglePlace={handleTogglePlace}
-            onToggleRestaurant={handleToggleRestaurant}
-            onAddActivity={handleAddActivity}
-            onApplyReplan={handleApplyReplan}
-            onApplyHealthImprovement={handleApplyHealthImprovement}
-            onTriggerOptimization={() => handleOpenOptimization()}
-            onUpdateTripDates={handleUpdateTripDates}
-            currency={currency}
-            isSaved={savedTrips.some((t) => t.id === currentTrip.id)}
-            selectedCountry={selectedCountry}
-            onSelectCountry={setSelectedCountry}
-            flightCabinClass={flightCabinClass}
-            onSelectFlightCabinClass={setFlightCabinClass}
-            includeFlights={includeFlights}
-            onToggleIncludeFlights={setIncludeFlights}
-            onUpdateBudget={handleUpdateBudget}
-          />
+          currentTrip ? (
+            <TripDashboardView
+              trip={currentTrip}
+              onRegenerate={() => handleGenerateTrip(currentTrip.destination, currentTrip.days, currentTrip.travelers, currentTrip.preferences, currentTrip.travelDates, currentTrip.startDate)}
+              onEdit={() => {
+                setPlannerDestination(currentTrip.destination);
+                setActiveTab('planner');
+              }}
+              onSaveTrip={handleSaveTrip}
+              onViewBudget={handleViewBudget}
+              onSelectHotel={handleSelectHotel}
+              onTogglePlace={handleTogglePlace}
+              onToggleRestaurant={handleToggleRestaurant}
+              onAddActivity={handleAddActivity}
+              onApplyReplan={handleApplyReplan}
+              onApplyHealthImprovement={handleApplyHealthImprovement}
+              onTriggerOptimization={() => handleOpenOptimization()}
+              onUpdateTripDates={handleUpdateTripDates}
+              currency={currency}
+              isSaved={savedTrips.some((t) => t.id === currentTrip.id)}
+              selectedCountry={selectedCountry}
+              onSelectCountry={setSelectedCountry}
+              flightCabinClass={flightCabinClass}
+              onSelectFlightCabinClass={setFlightCabinClass}
+              includeFlights={includeFlights}
+              onToggleIncludeFlights={setIncludeFlights}
+              onUpdateBudget={handleUpdateBudget}
+            />
+          ) : (
+            <div className="max-w-4xl mx-auto px-4 py-16">
+              <ServiceStatusFeedback
+                status="unavailable"
+                title="No Trip Selected"
+                message="Please choose a trip from 'My Trips' or create a new itinerary using the Trip Planner."
+              />
+            </div>
+          )
         )}
 
         {activeTab === 'budget' && (
-          <BudgetView
-            trip={currentTrip}
-            onUpdateBudget={handleUpdateBudget}
-            currency={currency}
-            onBackToDashboard={() => setActiveTab('dashboard')}
-            selectedCountry={selectedCountry}
-            onSelectCountry={setSelectedCountry}
-            flightCabinClass={flightCabinClass}
-            onSelectFlightCabinClass={setFlightCabinClass}
-            includeFlights={includeFlights}
-            onToggleIncludeFlights={setIncludeFlights}
-            initialSubTab={budgetSubTab}
-            onSelectSubTab={setBudgetSubTab}
-          />
+          currentTrip ? (
+            <BudgetView
+              trip={currentTrip}
+              onUpdateBudget={handleUpdateBudget}
+              currency={currency}
+              onBackToDashboard={() => setActiveTab('dashboard')}
+              selectedCountry={selectedCountry}
+              onSelectCountry={setSelectedCountry}
+              flightCabinClass={flightCabinClass}
+              onSelectFlightCabinClass={setFlightCabinClass}
+              includeFlights={includeFlights}
+              onToggleIncludeFlights={setIncludeFlights}
+              initialSubTab={budgetSubTab}
+              onSelectSubTab={setBudgetSubTab}
+            />
+          ) : (
+            <div className="max-w-4xl mx-auto px-4 py-16">
+              <ServiceStatusFeedback
+                status="unavailable"
+                title="No Trip Budget Active"
+                message="Please select or generate a trip first to explore the itemized budget and cost intelligence."
+              />
+            </div>
+          )
         )}
 
         {activeTab === 'discover' && (
@@ -580,6 +818,9 @@ export default function App() {
             savedTrips={savedTrips}
             onOpenTrip={handleOpenTrip}
             onDeleteTrip={handleDeleteTrip}
+            onDuplicateTrip={handleDuplicateTrip}
+            onArchiveTrip={handleArchiveTrip}
+            onEditTrip={handleEditTrip}
             onNewTrip={() => {
               setPlannerDestination('');
               setActiveTab('planner');
@@ -634,6 +875,7 @@ export default function App() {
         onClose={() => setIsAddActivityOpen(false)}
         dayNumber={activeActivityDay}
         onAdd={handleConfirmAddActivity}
+        destination={currentTrip.destination}
       />
 
     </div>

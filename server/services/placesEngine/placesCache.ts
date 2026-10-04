@@ -5,15 +5,29 @@
  * to avoid duplicate API calls, minimize latency, and strictly control Google Maps Platform costs.
  */
 
-import { TraveliaPlace, PlaceSearchParams, PlaceSource } from '../../types/places';
+import { TraveliaPlace, PlaceSearchParams, PlaceSource, PlaceDataStatus } from '../../types/places';
 
-interface CacheEntry {
+export interface CacheEntry {
   places: TraveliaPlace[];
   timestamp: number;
-  provider: PlaceSource;
+  createdAt: string;
+  expiresAt: string;
+  source: PlaceSource;
+  status: PlaceDataStatus;
   destination: string;
   category?: string;
   query?: string;
+  locale?: string;
+}
+
+export interface CachedPlacesResult {
+  places: TraveliaPlace[];
+  ageSeconds: number;
+  source: PlaceSource;
+  provider: PlaceSource; // alias for backwards compatibility
+  status: PlaceDataStatus;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export class PlacesCache {
@@ -27,6 +41,7 @@ export class PlacesCache {
 
   /**
    * Generates a deterministic cache key for a search request
+   * Normalizes: destination, category, coordinates, radius, search text, locale
    */
   public generateKey(params: PlaceSearchParams): string {
     const dest = (params.destination || '').trim().toLowerCase();
@@ -36,14 +51,16 @@ export class PlacesCache {
       ? `${params.latitude.toFixed(3)},${params.longitude.toFixed(3)}` 
       : 'none';
     const radius = params.radiusMeters ? Math.round(params.radiusMeters) : 'default';
+    const loc = (params.locale || 'en').trim().toLowerCase();
 
-    return `places:${dest}:${cat}:${q}:${coords}:${radius}`;
+    return `places:${dest}:${cat}:${q}:${coords}:${radius}:${loc}`;
   }
 
   /**
-   * Retrieves places from cache if valid and unexpired
+   * Retrieves places from cache if valid and unexpired.
+   * Maps places with explicit dataStatus: 'cached'.
    */
-  public get(key: string): { places: TraveliaPlace[]; ageSeconds: number; provider: PlaceSource } | null {
+  public get(key: string): CachedPlacesResult | null {
     const entry = this.cache.get(key);
     if (!entry) return null;
 
@@ -55,24 +72,52 @@ export class PlacesCache {
       return null;
     }
 
+    // Return cached places with updated dataStatus = 'cached'
+    const cachedPlaces = entry.places.map(p => ({
+      ...p,
+      dataStatus: 'cached' as PlaceDataStatus,
+      retrievedAt: entry.createdAt,
+      fetchedAt: entry.createdAt
+    }));
+
     return {
-      places: entry.places,
+      places: cachedPlaces,
       ageSeconds,
-      provider: entry.provider
+      source: entry.source,
+      provider: entry.source,
+      status: 'cached',
+      createdAt: entry.createdAt,
+      expiresAt: entry.expiresAt
     };
   }
 
   /**
-   * Stores places in cache with current timestamp
+   * Stores places in cache with creation and expiration timestamps
    */
-  public set(key: string, places: TraveliaPlace[], provider: PlaceSource, destination: string, category?: string, query?: string): void {
+  public set(
+    key: string,
+    places: TraveliaPlace[],
+    source: PlaceSource,
+    destination: string,
+    category?: string,
+    query?: string,
+    locale?: string
+  ): void {
+    const now = Date.now();
+    const nowISO = new Date(now).toISOString();
+    const expiresISO = new Date(now + this.defaultTTLSeconds * 1000).toISOString();
+
     this.cache.set(key, {
       places,
-      timestamp: Date.now(),
-      provider,
+      timestamp: now,
+      createdAt: nowISO,
+      expiresAt: expiresISO,
+      source,
+      status: 'cached',
       destination,
       category,
-      query
+      query,
+      locale
     });
   }
 

@@ -42,6 +42,8 @@ export type PlaceSource = 'google' | 'demo' | 'mixed' | 'unavailable';
 
 export type PlaceDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable';
 
+export type ServiceLifecycleStatus = 'loading' | 'success' | 'partial' | 'cached' | 'unavailable' | 'error';
+
 export type PlaceCategory = 
   | 'hotel'
   | 'tourist_attraction'
@@ -72,24 +74,26 @@ export interface PlacePhoto {
 
 export interface TraveliaPlace {
   id: string;
-  providerId?: string;
+  source: PlaceSource;
+  sourceId?: string;
+  providerId?: string; // alias for backwards compatibility
   name: string;
   category: PlaceCategory;
+  types?: string[];
   latitude: number;
   longitude: number;
   address?: string;
   rating?: number;
   userRatingsTotal?: number;
-  priceLevel?: number;
+  openingHours?: PlaceOpeningHours;
   websiteUri?: string;
   phoneNumber?: string;
-  openingHours?: PlaceOpeningHours;
   photos?: PlacePhoto[];
-  types?: string[];
-  source: PlaceSource;
+  priceLevel?: number;
   dataStatus: PlaceDataStatus;
-  fetchedAt?: string;
-  estimatedCost?: number;
+  retrievedAt?: string;
+  fetchedAt?: string; // alias for backwards compatibility
+  estimatedCost?: number | null;
   estimatedDuration?: string;
   description?: string;
   tag?: string;
@@ -120,16 +124,17 @@ export interface Hotel {
   id: string;
   name: string;
   location: string;
-  rating: number;
-  reviewsCount: number;
-  pricePerNight: number;
-  totalStayPrice: number;
+  rating?: number;
+  reviewsCount?: number;
+  pricePerNight: number | null;
+  totalStayPrice?: number | null;
   image: string;
   amenities: string[];
   description: string;
   tag: string;
   selected?: boolean;
   source?: PlaceSource;
+  sourceId?: string;
   dataStatus?: PlaceDataStatus;
   providerId?: string;
   coordinates?: { latitude: number; longitude: number };
@@ -137,15 +142,16 @@ export interface Hotel {
   websiteUri?: string;
   phoneNumber?: string;
   openingHours?: PlaceOpeningHours;
+  retrievedAt?: string;
 }
 
 export interface TouristPlace {
   id: string;
   name: string;
   location: string;
-  rating: number;
+  rating?: number;
   estimatedDuration: string;
-  entryCost: number;
+  entryCost: number | null;
   image: string;
   aiTag: string;
   category: string;
@@ -153,6 +159,7 @@ export interface TouristPlace {
   bestTimeToVisit: string;
   added?: boolean;
   source?: PlaceSource;
+  sourceId?: string;
   dataStatus?: PlaceDataStatus;
   providerId?: string;
   coordinates?: { latitude: number; longitude: number };
@@ -160,6 +167,7 @@ export interface TouristPlace {
   websiteUri?: string;
   phoneNumber?: string;
   openingHours?: PlaceOpeningHours;
+  retrievedAt?: string;
 }
 
 export interface Restaurant {
@@ -416,6 +424,18 @@ export interface PackingItem {
   isCustom?: boolean;
 }
 
+export interface UserPreferences {
+  travelStyle?: 'relaxed' | 'fast-paced' | 'cultural' | 'adventure' | 'luxury' | 'budget' | 'balanced';
+  budgetPreference?: 'budget' | 'moderate' | 'luxury';
+  activityPreferences?: string[];
+  walkingTolerance?: 'low' | 'moderate' | 'high';
+  preferredStartTime?: string; // e.g. '09:00'
+  preferredEndTime?: string; // e.g. '21:00'
+  foodPreferences?: string[];
+  crowdPreference?: 'avoid-crowds' | 'popular-spots' | 'balanced';
+  pacePreference?: 'relaxed' | 'moderate' | 'packed';
+}
+
 // 6. WEATHER AWARENESS
 export interface WeatherForecastDay {
   dayNumber: number;
@@ -608,5 +628,17 @@ export interface FlightBookingRecord {
   carbonOffset: boolean;
   promoCodeApplied?: string;
   discountAmount?: number;
+}
+
+export interface UserPreferences {
+  travelStyle?: 'relaxed' | 'fast-paced' | 'cultural' | 'adventure' | 'luxury' | 'budget' | 'balanced';
+  budgetPreference?: 'budget' | 'moderate' | 'luxury';
+  activityPreferences?: string[];
+  walkingTolerance?: 'low' | 'moderate' | 'high';
+  preferredStartTime?: string;
+  preferredEndTime?: string;
+  foodPreferences?: string[];
+  crowdPreference?: 'avoid-crowds' | 'popular-spots' | 'balanced';
+  pacePreference?: 'relaxed' | 'moderate' | 'packed';
 }
 

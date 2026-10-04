@@ -1,4 +1,4 @@
-import { TripPlan, DestinationCardData, Currency, CurrencyRate } from '../types';
+import { TripPlan, DestinationCardData, Currency, CurrencyRate, UserPreferences } from '../types';
 import { getFlightDataForDestination } from './flightData';
 import { detectCountryFromDestination } from './currencyHelper';
 import { calculateTravelDateRange, calculateTripDayDate, getTodayISO } from '../utils/dateUtils';
@@ -10,7 +10,17 @@ export const CURRENCY_RATES: Record<Currency, CurrencyRate> = {
   GBP: { symbol: '£', rateFromINR: 0.0094 },
 };
 
-export const formatCurrency = (amountInINR: number, currency: Currency = 'INR'): string => {
+export function applyLiveRatesToGlobalCurrencies(rates: Record<string, number>) {
+  if (rates.USD && rates.USD > 0) CURRENCY_RATES.USD.rateFromINR = rates.USD;
+  if (rates.EUR && rates.EUR > 0) CURRENCY_RATES.EUR.rateFromINR = rates.EUR;
+  if (rates.GBP && rates.GBP > 0) CURRENCY_RATES.GBP.rateFromINR = rates.GBP;
+}
+
+
+export const formatCurrency = (amountInINR: number | null | undefined, currency: Currency = 'INR'): string => {
+  if (amountInINR == null || isNaN(amountInINR)) {
+    return 'Price unavailable';
+  }
   const rate = CURRENCY_RATES[currency] || CURRENCY_RATES.INR;
   const converted = Math.round(amountInINR * rate.rateFromINR);
   if (currency === 'INR') {
@@ -310,7 +320,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       amenities: ['Infinity Pool', 'Beach Access', 'Free Breakfast', 'Ayurvedic Spa', 'High-Speed Wi-Fi'],
       description: 'Luxury seaside boutique retreat offering breathtaking Arabian Sea sunsets, private cabanas, and world-class Goan hospitality.',
       tag: 'Best Overall Stay',
-      selected: true
+      selected: true,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.518, longitude: 73.763 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     },
     {
       id: 'hotel-02',
@@ -324,7 +338,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       amenities: ['Tropical Garden Pool', 'Multi-Cuisine Diner', 'Cocktail Bar', 'Airport Shuttle'],
       description: 'Cozy boutique stay surrounded by swaying coconut palms, just 5 minutes walk from lively markets and beach shacks.',
       tag: 'Best Value',
-      selected: false
+      selected: false,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.543, longitude: 73.755 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     },
     {
       id: 'hotel-03',
@@ -338,7 +356,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       amenities: ['Private Plunge Pool', 'Cliff View Balcony', 'Chef on Demand', 'Yoga Deck'],
       description: 'Exclusive clifftop sanctuary blending bohemian Portuguese architecture with ultra-modern luxury amenities and sunset vistas.',
       tag: 'Luxury Pick',
-      selected: false
+      selected: false,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.598, longitude: 73.738 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     }
   ],
   touristPlaces: [
@@ -354,7 +376,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       category: 'Beach & Watersports',
       description: 'Goa’s most iconic beach, known for thrilling watersports, lively beach shacks, golden sands, and vibrant nightlife.',
       bestTimeToVisit: '4:00 PM – Sunset',
-      added: true
+      added: true,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.555, longitude: 73.751 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     },
     {
       id: 'place-02',
@@ -368,7 +394,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       category: 'Heritage',
       description: 'A well-preserved 17th-century Portuguese fortress standing proudly on the Sinquerim hill with panoramic ocean views.',
       bestTimeToVisit: '9:00 AM – 11:00 AM',
-      added: true
+      added: true,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.492, longitude: 73.773 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     },
     {
       id: 'place-03',
@@ -382,7 +412,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       category: 'Nature & Trekking',
       description: 'A four-tiered waterfall cascading like a "Sea of Milk" through the lush Western Ghats forest canopy.',
       bestTimeToVisit: 'October – February',
-      added: true
+      added: true,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.314, longitude: 74.314 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     },
     {
       id: 'place-04',
@@ -396,7 +430,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       category: 'Culture & Architecture',
       description: 'Baroque masterpiece housing the mortal remains of St. Francis Xavier, featuring ornate gilded altars and marble mosaic floors.',
       bestTimeToVisit: '9:00 AM – 1:00 PM',
-      added: true
+      added: true,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.500, longitude: 73.911 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     },
     {
       id: 'place-05',
@@ -410,7 +448,11 @@ export const DEFAULT_GOA_TRIP: TripPlan = {
       category: 'Markets',
       description: 'Eclectic open-air bazaar bustling with handmade jewelry, spices, handicrafts, boho clothing, and live acoustics.',
       bestTimeToVisit: 'Wednesday Afternoons',
-      added: false
+      added: false,
+      source: 'demo' as const,
+      dataStatus: 'demo' as const,
+      coordinates: { latitude: 15.580, longitude: 73.742 },
+      retrievedAt: '2026-10-04T10:00:00.000Z'
     }
   ],
   restaurants: [
@@ -671,6 +713,7 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
   }
 ];
 
+
 // Helper to generate dynamic trip plans based on user input
 export const generateTripFromPrompt = (
   destination: string,
@@ -678,9 +721,11 @@ export const generateTripFromPrompt = (
   travelers: number = 2,
   preferences: string[] = ['Relaxation', 'Food & Culture'],
   customDates?: string,
-  startDateInput?: string
+  startDateInput?: string,
+  userPreferences?: UserPreferences
 ): TripPlan => {
   const destLower = destination.toLowerCase();
+
   
   let heroImage = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop';
   let tagline = `AI-optimized personalized itinerary exploring the finest culture, stays, and hidden gems of ${destination}.`;
@@ -708,13 +753,26 @@ export const generateTripFromPrompt = (
     tagline = 'Gilded heritage havelis, desert night camps & royal Rajput palaces';
   }
 
+  const isRelaxed = userPreferences?.travelStyle === 'relaxed' || 
+                    userPreferences?.pacePreference === 'relaxed' || 
+                    preferences.includes('Relaxation');
+  const isAdventure = userPreferences?.travelStyle === 'adventure' || 
+                      preferences.includes('Adventure');
+  const isBudget = userPreferences?.budgetPreference === 'budget' || 
+                   userPreferences?.travelStyle === 'budget' || 
+                   preferences.includes('Budget');
+  const startTime = userPreferences?.preferredStartTime || (isRelaxed ? '10:00 AM' : '09:30 AM');
+  const foodChoice = (userPreferences?.foodPreferences && userPreferences.foodPreferences[0]) 
+    ? userPreferences.foodPreferences[0] 
+    : 'Regional';
+
   const nights = Math.max(1, days - 1);
-  const baseHotelNight = 4200;
+  const baseHotelNight = isBudget ? 2200 : 4200;
   const hotelBudget = baseHotelNight * nights;
-  const foodBudget = 1500 * days * travelers;
-  const transportBudget = 1000 * days;
-  const activitiesBudget = 1200 * days * travelers;
-  const miscBudget = 2000;
+  const foodBudget = (isBudget ? 800 : 1500) * days * travelers;
+  const transportBudget = (isBudget ? 500 : 1000) * days;
+  const activitiesBudget = (isBudget ? 400 : 1200) * days * travelers;
+  const miscBudget = isBudget ? 1000 : 2000;
   
   const detectedCountry = detectCountryFromDestination(destination);
   const destFlightData = getFlightDataForDestination(destination, detectedCountry.countryName);
@@ -727,6 +785,57 @@ export const generateTripFromPrompt = (
 
   const generatedItinerary = Array.from({ length: days }).map((_, i) => {
     const dayInfo = calculateTripDayDate(dateRange.startDateISO, i + 1);
+    const dayActivities = [];
+
+    // Activity 1: Morning Exploration
+    dayActivities.push({
+      id: `gen-act-${i}-1`,
+      time: startTime,
+      activity: isAdventure 
+        ? `Morning Outdoor Trail & Trek at ${destination} Ridge`
+        : `Morning Exploration at ${destination} Landmark`,
+      location: `Central ${destination}`,
+      estimatedCost: isBudget ? 100 * travelers : 400 * travelers,
+      duration: isRelaxed ? '2 hrs' : '2.5 hrs',
+      aiRecommendation: isRelaxed 
+        ? `Relaxed start at ${startTime}; plenty of scenic buffer time.`
+        : 'Early arrival avoids peak queues; prime photo lighting.',
+      category: isAdventure ? ('adventure' as const) : ('sightseeing' as const),
+      imageUrl: heroImage
+    });
+
+    // Activity 2: Culinary Stop
+    dayActivities.push({
+      id: `gen-act-${i}-2`,
+      time: isRelaxed ? '01:30 PM' : '01:00 PM',
+      activity: isBudget
+        ? `Authentic ${foodChoice} Street Food Hub & Chai Corner`
+        : `Authentic ${foodChoice} Dining & Cafe Break`,
+      location: `Old Town ${destination}`,
+      estimatedCost: isBudget ? 250 * travelers : 650 * travelers,
+      duration: isRelaxed ? '2 hrs' : '1.5 hrs',
+      aiRecommendation: `Curated for ${foodChoice} culinary preference with verified hygiene.`,
+      category: 'food' as const,
+      imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=600&auto=format&fit=crop'
+    });
+
+    // Activity 3: Afternoon / Golden Hour (omitted if relaxed to preserve buffer)
+    if (!isRelaxed) {
+      dayActivities.push({
+        id: `gen-act-${i}-3`,
+        time: '04:30 PM',
+        activity: isAdventure
+          ? `High-Viewpoint Sunset Hike & Coastal Panorama`
+          : `Signature Activity & Scenic Sunset Vantage Point`,
+        location: `Panoramic Hilltop / Waterfront`,
+        estimatedCost: isBudget ? 150 * travelers : 500 * travelers,
+        duration: '2.5 hrs',
+        aiRecommendation: 'Unmissable golden hour vantage point.',
+        category: isAdventure ? ('adventure' as const) : ('relaxation' as const),
+        imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop'
+      });
+    }
+
     return {
       dayNumber: i + 1,
       date: dayInfo.dateISO,
@@ -737,41 +846,7 @@ export const generateTripFromPrompt = (
         ? 'Morning Highlights & Departure' 
         : `Highlights & Cultural Immersion Part ${i}`,
       theme: `Curated AI experiences tailored for ${preferences.join(' & ')}`,
-      activities: [
-        {
-          id: `gen-act-${i}-1`,
-          time: '09:30 AM',
-          activity: `Morning Exploration at ${destination} Landmark`,
-          location: `Central ${destination}`,
-          estimatedCost: 400 * travelers,
-          duration: '2.5 hrs',
-          aiRecommendation: 'Early arrival avoids peak queues; prime photo lighting.',
-          category: 'sightseeing' as const,
-          imageUrl: heroImage
-        },
-        {
-          id: `gen-act-${i}-2`,
-          time: '01:00 PM',
-          activity: `Authentic Regional Lunch & Cafe Break`,
-          location: `Old Town ${destination}`,
-          estimatedCost: 650 * travelers,
-          duration: '1.5 hrs',
-          aiRecommendation: 'Ask for the chef’s seasonal special and local beverage.',
-          category: 'food' as const,
-          imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=600&auto=format&fit=crop'
-        },
-        {
-          id: `gen-act-${i}-3`,
-          time: '04:00 PM',
-          activity: `Signature Activity & Scenic Sunset Vantage Point`,
-          location: `Panoramic Hilltop / Waterfront`,
-          estimatedCost: 500 * travelers,
-          duration: '2.5 hrs',
-          aiRecommendation: 'Unmissable golden hour vantage point.',
-          category: 'relaxation' as const,
-          imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop'
-        }
-      ]
+      activities: dayActivities
     };
   });
 
@@ -788,11 +863,12 @@ export const generateTripFromPrompt = (
     endDate: dateRange.endDateISO,
     travelDates: customDates || dateRange.formattedRange,
     preferences: preferences as any,
-    hotelCategory: 'mid',
+    hotelCategory: isBudget ? 'budget' : 'mid',
     transportType: 'cab',
     foodPreference: 'casual',
-    activityLevel: 'moderate',
+    activityLevel: isRelaxed ? 'relaxed' : 'moderate',
     status: 'planning',
+
     createdAt: new Date().toISOString().split('T')[0],
     budget: {
       hotel: hotelBudget,
@@ -805,10 +881,11 @@ export const generateTripFromPrompt = (
     },
     aiNotes: [
       `Customized for ${travelers} traveler(s) with focus on ${preferences.join(', ')}.`,
-      'Calculated dynamic distance grouping to save transit costs.',
-      'Includes balanced downtime between major attractions.'
+      isRelaxed ? 'Relaxed pacing profile applied: fewer daily stops with generous 90-min buffers.' : 'Calculated dynamic distance grouping to save transit costs.',
+      isBudget ? 'Budget optimization applied: prioritized authentic low-cost cultural experiences.' : 'Includes balanced downtime between major attractions.'
     ],
     itinerary: generatedItinerary,
+
     hotels: [
       {
         id: `h-${Date.now()}-1`,

@@ -2,13 +2,17 @@ import { Router, Request, Response } from 'express';
 import {
   calculateDayRouteMetrics,
   calculateTripRouteMetrics,
+  calculateRouteMatrix,
   optimizeDayRoute,
   compareTripRoutes,
   clusterActivitiesGeographically
 } from '../services/routeIntelligenceService';
+
 import { RouteIntelligenceResponse, TravelMode, RouteOptimizationConstraint } from '../types/route';
+import { isValidCoordinate } from '../middleware/validation';
 
 const router = Router();
+
 
 // Route Provider Status & Capability Check
 router.get('/status', (req: Request, res: Response) => {
@@ -332,4 +336,60 @@ router.post('/cluster', (req: Request, res: Response) => {
   }
 });
 
+// Route Matrix Endpoint (Multi-stop origin/destination combinations)
+router.post('/matrix', async (req: Request, res: Response) => {
+  try {
+    const { origins = [], destinations = [], mode = 'driving' } = req.body;
+    if (!Array.isArray(origins) || !Array.isArray(destinations) || origins.length === 0 || destinations.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: { code: 'INVALID_MATRIX_PARAMS', message: 'Valid non-empty origins and destinations arrays are required' }
+      });
+    }
+
+    // Validate origins coordinates
+    for (let i = 0; i < origins.length; i++) {
+      const orig = origins[i];
+      if (orig && typeof orig === 'object' && ('latitude' in orig || 'lat' in orig)) {
+        const lat = orig.latitude ?? orig.lat;
+        const lng = orig.longitude ?? orig.lng;
+        const check = isValidCoordinate(lat, lng);
+        if (!check.valid) {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'INVALID_COORDINATES', message: `Origin #${i + 1}: ${check.error}` }
+          });
+        }
+      }
+    }
+
+    // Validate destinations coordinates
+    for (let i = 0; i < destinations.length; i++) {
+      const dest = destinations[i];
+      if (dest && typeof dest === 'object' && ('latitude' in dest || 'lat' in dest)) {
+        const lat = dest.latitude ?? dest.lat;
+        const lng = dest.longitude ?? dest.lng;
+        const check = isValidCoordinate(lat, lng);
+        if (!check.valid) {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'INVALID_COORDINATES', message: `Destination #${i + 1}: ${check.error}` }
+          });
+        }
+      }
+    }
+
+    const matrix = await calculateRouteMatrix(origins, destinations, mode);
+    res.json(matrix);
+  } catch (error: any) {
+    console.error('[API /route/matrix] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'ROUTE_MATRIX_ERROR', message: error?.message || 'Route matrix calculation failed' }
+    });
+  }
+});
+
+
 export default router;
+
