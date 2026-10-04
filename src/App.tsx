@@ -44,6 +44,7 @@ export default function App() {
   const [savedTrips, setSavedTrips] = useState<TripPlan[]>(INITIAL_SAVED_TRIPS);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [plannerDestination, setPlannerDestination] = useState<string>('');
+  const [plannerOrigin, setPlannerOrigin] = useState<string>('');
 
   // Synchronize Live Currency Rates from Backend Provider
   useEffect(() => {
@@ -231,12 +232,13 @@ export default function App() {
     travelers: number, 
     preferences: TripPreference[],
     customDates?: string,
-    startDateInput?: string
+    startDateInput?: string,
+    originInput?: string
   ) => {
     setIsGenerating(true);
     
     try {
-      const generated = generateTripFromPrompt(destination, days, travelers, preferences, customDates, startDateInput);
+      const generated = generateTripFromPrompt(destination, days, travelers, preferences, customDates, startDateInput, undefined, originInput);
       const cleanDest = (destination || '').split(',')[0].trim();
 
       // Fetch authentic live hotels and tourist places from Google Places Data Layer
@@ -713,6 +715,7 @@ export default function App() {
         onSelectTab={(tab) => {
           if (tab === 'planner') {
             setPlannerDestination('');
+            setPlannerOrigin('');
           }
           setActiveTab(tab);
         }}
@@ -735,6 +738,7 @@ export default function App() {
           <PlannerView
             onGenerateTrip={handleGenerateTrip}
             initialDestination={plannerDestination}
+            initialOrigin={plannerOrigin}
             isGenerating={isGenerating}
           />
         )}
@@ -743,9 +747,10 @@ export default function App() {
           currentTrip ? (
             <TripDashboardView
               trip={currentTrip}
-              onRegenerate={() => handleGenerateTrip(currentTrip.destination, currentTrip.days, currentTrip.travelers, currentTrip.preferences, currentTrip.travelDates, currentTrip.startDate)}
+              onRegenerate={() => handleGenerateTrip(currentTrip.destination, currentTrip.days, currentTrip.travelers, currentTrip.preferences, currentTrip.travelDates, currentTrip.startDate, currentTrip.origin)}
               onEdit={() => {
                 setPlannerDestination(currentTrip.destination);
+                setPlannerOrigin(currentTrip.origin || '');
                 setActiveTab('planner');
               }}
               onSaveTrip={handleSaveTrip}

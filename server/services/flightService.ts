@@ -60,9 +60,8 @@ export class FlightService {
     });
 
     const isAvailable = searchResult.outbound.length > 0;
-
     const response: FlightSearchResponse = {
-      success: isAvailable,
+      success: isAvailable || searchResult.isSameCity === true,
       origin,
       destination,
       departureDate,
@@ -74,7 +73,9 @@ export class FlightService {
       retrievedAt: new Date().toISOString(),
       outboundFlights: searchResult.outbound,
       returnFlights: searchResult.returnFlights,
-      error: !isAvailable ? { code: 'NO_FLIGHTS_FOUND', message: `No flights available from ${origin} to ${destination}` } : undefined
+      isSameCity: searchResult.isSameCity,
+      message: searchResult.message,
+      error: !isAvailable && !searchResult.isSameCity ? { code: 'NO_FLIGHTS_FOUND', message: `No flights available from ${origin} to ${destination}` } : undefined
     };
 
     if (isAvailable) {

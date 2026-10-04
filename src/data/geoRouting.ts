@@ -1,5 +1,6 @@
 import { TripPlan, DayRoute, RouteWaypoint, RouteSegment, Currency } from '../types';
 import { formatCurrency } from './mockData';
+import { resolveCanonicalLocation, isValidCoordinate, isGeographicallyConsistent } from '../services/canonicalLocationService';
 
 export type TransitMode = 'cab' | 'metro' | 'walking' | 'bike';
 
@@ -173,6 +174,54 @@ export const CITY_GEO_PROFILES: Record<string, CityGeoProfile> = {
       { name: 'Lauterbrunnen Valley of 72 Waterfalls', coords: [46.5935, 7.9077], tip: 'Glacial valley with sheer cliffs and cascading falls.' },
       { name: 'Jungfraujoch Top of Europe', coords: [46.5475, 7.9854], tip: 'Highest railway station in Europe at 3,454 meters.' }
     ]
+  },
+  delhi: {
+    center: [28.6139, 77.2090],
+    name: 'Delhi, India',
+    streetAvenues: ['Kartavya Path', 'Rajpath', 'Connaught Circus', 'Barakhamba Road', 'Chandni Chowk'],
+    landmarks: [
+      { name: 'The Imperial Grand Heritage Stay', coords: [28.6225, 77.2185], tip: 'Historic luxury icon on Janpath in central Lutyens Delhi.' },
+      { name: 'Red Fort (Lal Qila)', coords: [28.6562, 77.2410], tip: 'Grand 17th-century Mughal fortress of red sandstone.' },
+      { name: 'India Gate & Kartavya Path', coords: [28.6129, 77.2295], tip: 'Iconic national war memorial arch with expansive ceremonial lawns.' },
+      { name: "Humayun's Tomb Garden Complex", coords: [28.5875, 77.2507], tip: 'UNESCO World Heritage precursor to the Taj Mahal.' },
+      { name: 'Qutub Minar & Mehrauli Complex', coords: [28.5244, 77.1855], tip: 'World’s tallest brick minaret standing 72.5 meters tall.' },
+      { name: 'Chandni Chowk & Jama Masjid', coords: [28.6507, 77.2334], tip: 'Historic Old Delhi bazaar with traditional street food and spice alleys.' },
+      { name: 'Lotus Temple (Baháʼí House of Worship)', coords: [28.5535, 77.2588], tip: 'Distinctive flower-like marble sanctuary of silent contemplation.' }
+    ]
+  },
+  chennai: {
+    center: [13.0827, 80.2707],
+    name: 'Chennai, India',
+    streetAvenues: ['Kamarajar Salai', 'Anna Salai (Mount Road)', 'Poonamallee High Road', 'Marina Beach Road'],
+    landmarks: [
+      { name: 'Taj Connemara Heritage Stay', coords: [13.0617, 80.2592], tip: 'Chennai’s oldest luxury hotel dating to 1854 on Binny Road.' },
+      { name: 'Marina Beach Promenade', coords: [13.0500, 80.2824], tip: 'One of the world’s longest natural urban beaches along the Coromandel coast.' },
+      { name: 'Kapaleeshwarar Temple, Mylapore', coords: [13.0336, 80.2699], tip: '7th-century Dravidian architectural marvel with colorful gopuram.' },
+      { name: 'San Thome Basilica', coords: [13.0334, 80.2785], tip: 'Neo-Gothic cathedral built over the tomb of St. Thomas the Apostle.' },
+      { name: 'Fort St. George & Museum', coords: [13.0797, 80.2874], tip: 'First English fortress in India established in 1644.' }
+    ]
+  },
+  mumbai: {
+    center: [19.0760, 72.8777],
+    name: 'Mumbai, India',
+    streetAvenues: ['Marine Drive', 'Colaba Causeway', 'Netaji Subhash Chandra Bose Road', 'Dr. D.N. Road'],
+    landmarks: [
+      { name: 'The Taj Mahal Palace & Tower', coords: [18.9217, 72.8332], tip: 'Historic harbor landmark facing the Gateway of India.' },
+      { name: 'Gateway of India', coords: [18.9220, 72.8347], tip: 'Iconic 20th-century basalt arch monument overlooking Mumbai Harbour.' },
+      { name: 'Marine Drive & Chowpatty', coords: [18.9432, 72.8230], tip: 'The Queen’s Necklace 3.6-kilometer arc promenade along the coast.' },
+      { name: 'Chhatrapati Shivaji Maharaj Terminus', coords: [18.9401, 72.8354], tip: 'UNESCO World Heritage Victorian Gothic revival railway headquarters.' }
+    ]
+  },
+  bengaluru: {
+    center: [12.9716, 77.5946],
+    name: 'Bengaluru, India',
+    streetAvenues: ['MG Road', 'Brigade Road', 'Kasturba Road', 'Residency Road'],
+    landmarks: [
+      { name: 'The Oberoi Garden Stay', coords: [12.9732, 77.6186], tip: 'Centrally located luxury sanctuary amidst century-old raintrees.' },
+      { name: 'Lalbagh Botanical Garden & Glass House', coords: [12.9507, 77.5848], tip: 'Historic 240-acre botanical garden founded by Hyder Ali in 1760.' },
+      { name: 'Bangalore Palace', coords: [13.0035, 77.5891], tip: 'Tudor-style royal estate inspired by Windsor Castle.' },
+      { name: 'Cubbon Park & Vidhana Soudha', coords: [12.9796, 77.5907], tip: 'Lush 300-acre green lung framing Neo-Dravidian state legislature.' }
+    ]
   }
 };
 
@@ -196,33 +245,45 @@ export const calculateHaversineDistance = (
   return Math.round(straightLine * 100) / 100;
 };
 
-// Find matching city profile
+// Find matching city profile using authoritative canonical locations
 export const resolveCityProfile = (destination: string): CityGeoProfile => {
   const lower = (destination || '').toLowerCase();
+  
+  // 1. Direct match in CITY_GEO_PROFILES
   for (const [key, profile] of Object.entries(CITY_GEO_PROFILES)) {
     if (lower.includes(key) || lower.includes(profile.name.toLowerCase().split(',')[0])) {
       return profile;
     }
   }
 
-  // Fallback: derive stable pseudo-geographic coordinates from string hash
-  let hash = 0;
-  for (let i = 0; i < lower.length; i++) {
-    hash = (hash << 5) - hash + lower.charCodeAt(i);
-    hash |= 0;
+  // 2. Canonical Location Resolution (authoritative geographic center)
+  const canonical = resolveCanonicalLocation(destination);
+  if (canonical && isValidCoordinate(canonical.latitude, canonical.longitude).valid) {
+    const lat = canonical.latitude;
+    const lng = canonical.longitude;
+    return {
+      center: [lat, lng],
+      name: `${canonical.name}, ${canonical.country}`,
+      streetAvenues: ['Grand Boulevard', 'Central Avenue', 'Heritage Way', 'Promenade Road'],
+      landmarks: [
+        { name: `${canonical.name} Heritage Central Hotel`, coords: [lat, lng], tip: `Central verified stay in ${canonical.name}.` },
+        { name: `${canonical.name} Historic Cultural Monument`, coords: [lat + 0.015, lng + 0.012], tip: `Iconic cultural landmark in ${canonical.name}.` },
+        { name: `${canonical.name} Old Town Artisan Walk`, coords: [lat - 0.012, lng + 0.014], tip: `Traditional artisan and dining promenade in ${canonical.name}.` },
+        { name: `${canonical.name} Scenic Panorama Point`, coords: [lat + 0.022, lng - 0.015], tip: `Panoramic vantage point in ${canonical.name}.` }
+      ]
+    };
   }
-  const baseLat = 20 + (Math.abs(hash) % 35);
-  const baseLng = 10 + (Math.abs(hash >> 3) % 110);
 
+  // 3. Fallback: Default to verified Delhi, India center rather than pseudo-random Pakistan coordinates
+  const defaultCenter: [number, number] = [28.6139, 77.2090];
   return {
-    center: [baseLat, baseLng],
-    name: destination,
-    streetAvenues: ['Grand Boulevard', 'Riverfront Way', 'Central Avenue', 'Old Town Heritage Lane', 'Panoramic Hill Road'],
+    center: defaultCenter,
+    name: destination || 'Delhi, India',
+    streetAvenues: ['Grand Boulevard', 'Riverfront Way', 'Central Avenue', 'Heritage Lane'],
     landmarks: [
-      { name: 'City Center Grand Hotel', coords: [baseLat, baseLng], tip: 'Convenient central location close to historic district.' },
-      { name: 'Historic Cultural Monument', coords: [baseLat + 0.024, baseLng + 0.018], tip: 'World-renowned landmark with guided cultural access.' },
-      { name: 'Old Town Artisan Promenade', coords: [baseLat - 0.018, baseLng + 0.025], tip: 'Lively pedestrian district with authentic dining.' },
-      { name: 'Scenic Hillside Viewpoint', coords: [baseLat + 0.038, baseLng - 0.022], tip: 'Panoramic vantage point with golden hour sunset vista.' }
+      { name: `${destination || 'City'} Central Stay`, coords: defaultCenter, tip: 'Central stay convenient to verified points of interest.' },
+      { name: `${destination || 'City'} Landmark Point`, coords: [defaultCenter[0] + 0.015, defaultCenter[1] + 0.012], tip: 'Notable point of interest.' },
+      { name: `${destination || 'City'} Historic Quarter`, coords: [defaultCenter[0] - 0.012, defaultCenter[1] + 0.015], tip: 'Historic neighborhood district.' }
     ]
   };
 };
@@ -321,6 +382,18 @@ export const buildDayWaypoints = (
           // Fallback to destination center without fabricating sinusoidal pseudo-points
           coords = profile.center;
         }
+      }
+    }
+
+    // Geographic sanity validation: ensure coords are valid numbers and geographically close to destination
+    const coordSanity = isValidCoordinate(coords[0], coords[1]);
+    if (!coordSanity.valid) {
+      coords = profile.center;
+    } else {
+      const distFromCenter = calculateHaversineDistance(coords, profile.center);
+      if (distFromCenter > 120) {
+        // If coords belong to another region (e.g. stale Pakistan coords), reset to verified destination landmark or center
+        coords = (idx < profile.landmarks.length) ? profile.landmarks[idx].coords : profile.center;
       }
     }
 

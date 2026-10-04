@@ -97,6 +97,8 @@ export interface FlightSearchResponse {
   retrievedAt: string;
   outboundFlights: NormalizedFlightOffer[];
   returnFlights: NormalizedFlightOffer[];
+  isSameCity?: boolean;
+  message?: string;
   error?: {
     code: string;
     message: string;

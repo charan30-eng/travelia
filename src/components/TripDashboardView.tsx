@@ -140,8 +140,8 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
 
   // Dynamic flight package matching trip destination (Korea, Japan, Paris, Goa, etc.)
   const flightData = useMemo(() => {
-    return getFlightDataForDestination(trip.destination);
-  }, [trip.destination]);
+    return getFlightDataForDestination(trip.destination, trip.origin);
+  }, [trip.destination, trip.origin]);
 
   // Destination Country & Currency Information for Dual-Currency Display (synced with App)
   const destinationCountry = useMemo(() => {
@@ -150,6 +150,7 @@ export const TripDashboardView: React.FC<TripDashboardViewProps> = ({
 
   // Unified Flight & Airfare Calculation (Identical across Dashboard & Budget Studio)
   const baseRoundtripAirfarePerTraveler = useMemo(() => {
+    if (flightData.isSameCity) return 0;
     return (flightData.outboundFlight?.pricePerPerson || 3850) + (flightData.returnFlight?.pricePerPerson || 4120);
   }, [flightData]);
 

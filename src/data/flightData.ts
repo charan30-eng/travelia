@@ -1,4 +1,5 @@
-import { FlightSegment, FlightOption, AirportTransferInfo } from '../types';
+import { FlightSegment, FlightOption, AirportTransferInfo, Airport } from '../types';
+import { resolveAirport as resolveCanonicalAirport } from '../services/canonicalLocationService';
 
 export const DEFAULT_OUTBOUND_FLIGHT: FlightSegment = {
   id: 'flight-out-01',
@@ -287,6 +288,9 @@ export interface DestinationFlightPackage {
   alternativeFlights: FlightOption[];
   airportTransfer: AirportTransferInfo;
   airportGuide: typeof AIRPORT_GUIDE;
+  isSameCity?: boolean;
+  requiresFlight?: boolean;
+  message?: string;
 }
 
 interface DestinationSpec {
@@ -364,6 +368,122 @@ const DESTINATION_SPECS: Record<string, DestinationSpec> = {
     savingsPct: 18,
     histAvgINR: 9750,
     advice: 'Roundtrip flight fare for Goa is currently 18% lower than peak coastal holiday averages.'
+  },
+
+  delhi: {
+    countryName: 'India',
+    cityName: 'Delhi',
+    airportName: "Indira Gandhi International Airport (DEL)",
+    airportCode: 'DEL',
+    terminalDep: 'Terminal 1/4',
+    terminalArr: 'Terminal 3',
+    outboundAirline: 'IndiGo Airlines',
+    outboundCode: '6E',
+    outboundFlightNum: '6E-2041',
+    outboundAircraft: 'Airbus A321neo',
+    returnAirline: 'Air India',
+    returnCode: 'AI',
+    returnFlightNum: 'AI-854',
+    returnAircraft: 'Airbus A320neo',
+    flightDuration: '2h 45m',
+    returnDuration: '2h 45m',
+    outboundPrice: 4850,
+    returnPrice: 5120,
+    originHub: { city: 'Chennai', code: 'MAA', airport: 'Chennai International Airport (T1/T4)' },
+    delhiAlt: { outAirline: 'Air India', outFlight: 'AI-542', outPrice: 5100, retAirline: 'Air India', retFlight: 'AI-543', retPrice: 5200 },
+    blrAlt: { outAirline: 'IndiGo', outFlight: '6E-612', outPrice: 4600, retAirline: 'IndiGo', retFlight: '6E-613', retPrice: 4750 },
+    distanceToHotelKm: 18,
+    driveMins: 35,
+    transfers: [
+      { mode: 'Delhi Airport Metro Express Line', estimatedCost: 60, duration: '20 mins', tip: 'Fastest non-stop link from Terminal 3 straight to New Delhi Railway Station.' },
+      { mode: 'Pre-Paid AC Taxi (Delhi Police Counter)', estimatedCost: 650, duration: '35 mins', tip: 'Official Delhi Traffic Police prepaid booth located at Exit 4.' },
+      { mode: 'App Taxi (Uber / Ola)', estimatedCost: 550, duration: '35 mins', tip: 'Multi-level parking pickup bay outside Terminal 3.' }
+    ],
+    checklists: [
+      'DigiYatra biometric paperless entry enabled at T2 and T3 for under 60-second gate access',
+      'Delhi Metro Airport Express tokens and smart cards available on concourse Level 1',
+      'Pre-paid taxi counter recommended to avoid unofficial touts outside arrival terminal'
+    ],
+    baggageReminder: 'Domestic check-in: 15 kg per traveler included + 7 kg cabin bag.',
+    savingsPct: 20,
+    histAvgINR: 12500,
+    advice: 'Roundtrip flights into Delhi Indira Gandhi International Airport (DEL) are operating at optimal fare brackets.'
+  },
+
+  chennai: {
+    countryName: 'India',
+    cityName: 'Chennai',
+    airportName: 'Chennai International Airport (MAA)',
+    airportCode: 'MAA',
+    terminalDep: 'Terminal 1/2',
+    terminalArr: 'Terminal 4',
+    outboundAirline: 'Air India',
+    outboundCode: 'AI',
+    outboundFlightNum: 'AI-542',
+    outboundAircraft: 'Airbus A320neo',
+    returnAirline: 'IndiGo Airlines',
+    returnCode: '6E',
+    returnFlightNum: '6E-2042',
+    returnAircraft: 'Airbus A321neo',
+    flightDuration: '2h 45m',
+    returnDuration: '2h 45m',
+    outboundPrice: 4850,
+    returnPrice: 5120,
+    originHub: { city: 'Delhi', code: 'DEL', airport: "Indira Gandhi International Airport (T3)" },
+    delhiAlt: { outAirline: 'Air India', outFlight: 'AI-542', outPrice: 4850, retAirline: 'Air India', retFlight: 'AI-543', retPrice: 5120 },
+    blrAlt: { outAirline: 'IndiGo', outFlight: '6E-412', outPrice: 2200, retAirline: 'IndiGo', retFlight: '6E-413', retPrice: 2350 },
+    distanceToHotelKm: 16,
+    driveMins: 30,
+    transfers: [
+      { mode: 'Chennai Metro Rail (Airport Station)', estimatedCost: 40, duration: '25 mins', tip: 'Direct air-conditioned metro right into Chennai Central & Anna Salai.' },
+      { mode: 'Pre-Paid Airport Taxi', estimatedCost: 550, duration: '30 mins', tip: 'Prepaid counters outside arrivals terminal.' }
+    ],
+    checklists: [
+      'DigiYatra enabled biometric gates operational',
+      'Direct concourse walkway connecting Arrival Terminal to Chennai Metro Airport Station'
+    ],
+    baggageReminder: 'Domestic check-in: 15 kg per traveler + 7 kg cabin bag.',
+    savingsPct: 15,
+    histAvgINR: 11000,
+    advice: 'Flights to Chennai are currently at stable off-peak fare levels.'
+  },
+
+  mumbai: {
+    countryName: 'India',
+    cityName: 'Mumbai',
+    airportName: "Chhatrapati Shivaji Maharaj Int'l Airport (BOM)",
+    airportCode: 'BOM',
+    terminalDep: 'Terminal 1/3',
+    terminalArr: 'Terminal 2',
+    outboundAirline: 'IndiGo Airlines',
+    outboundCode: '6E',
+    outboundFlightNum: '6E-5341',
+    outboundAircraft: 'Airbus A321neo',
+    returnAirline: 'Air India',
+    returnCode: 'AI',
+    returnFlightNum: 'AI-681',
+    returnAircraft: 'Airbus A320neo',
+    flightDuration: '2h 10m',
+    returnDuration: '2h 10m',
+    outboundPrice: 4850,
+    returnPrice: 5120,
+    originHub: { city: 'Delhi', code: 'DEL', airport: "Indira Gandhi International Airport (T3)" },
+    delhiAlt: { outAirline: 'Air India', outFlight: 'AI-681', outPrice: 4850, retAirline: 'Air India', retFlight: 'AI-682', retPrice: 5120 },
+    blrAlt: { outAirline: 'Akasa Air', outFlight: 'QP-1102', outPrice: 3200, retAirline: 'Akasa Air', retFlight: 'QP-1103', retPrice: 3400 },
+    distanceToHotelKm: 22,
+    driveMins: 35,
+    transfers: [
+      { mode: 'Mumbai Metro Line 3 (Aqua Line)', estimatedCost: 50, duration: '25 mins', tip: 'Direct underground metro access from T2 to BKC and South Mumbai.' },
+      { mode: 'Pre-Paid AC Cool Cab', estimatedCost: 750, duration: '35 mins', tip: 'Prepaid cab booth located at Terminal 2 exit.' }
+    ],
+    checklists: [
+      'DigiYatra biometric paperless gates operational at T1 and T2',
+      'Dedicated ride-hailing parking levels for Uber and Ola'
+    ],
+    baggageReminder: 'Domestic check-in: 15 kg per traveler + 7 kg cabin bag.',
+    savingsPct: 18,
+    histAvgINR: 11800,
+    advice: 'Mumbai roundtrip flights are currently operating with good seat availability.'
   },
 
   kerala: {
@@ -1255,7 +1375,40 @@ const DESTINATION_SPECS: Record<string, DestinationSpec> = {
 /**
  * Builds realistic, complete DestinationFlightPackage for any resolved destination specification
  */
-function buildPackageFromSpec(spec: DestinationSpec): DestinationFlightPackage {
+function buildPackageFromSpec(
+  spec: DestinationSpec,
+  originOverride?: Airport | null,
+  isSameCityInput?: boolean
+): DestinationFlightPackage {
+  // If user provided a specific origin, use that airport
+  if (originOverride) {
+    spec.originHub = {
+      city: originOverride.city,
+      code: originOverride.airportCode,
+      airport: originOverride.airportName
+    };
+  }
+
+  // Prevent same code for different cities / guard against DEL -> DEL
+  const isSameCity = Boolean(isSameCityInput || (originOverride && originOverride.airportCode === spec.airportCode));
+  if (!isSameCity && spec.originHub.code === spec.airportCode) {
+    if (spec.airportCode === 'DEL') {
+      spec.originHub = { city: 'Chennai', code: 'MAA', airport: 'Chennai International Airport (T1/T4)' };
+      spec.flightDuration = '2h 45m';
+      spec.returnDuration = '2h 45m';
+      spec.outboundPrice = 4850;
+      spec.returnPrice = 5120;
+    } else if (spec.airportCode === 'BOM') {
+      spec.originHub = { city: 'Delhi', code: 'DEL', airport: "Indira Gandhi Int'l Airport (T3)" };
+      spec.flightDuration = '2h 10m';
+      spec.returnDuration = '2h 10m';
+      spec.outboundPrice = 4850;
+      spec.returnPrice = 5120;
+    } else {
+      spec.originHub = { city: 'Mumbai', code: 'BOM', airport: "Chhatrapati Shivaji Maharaj Int'l Airport (T2)" };
+    }
+  }
+
   const outbound: FlightSegment = {
     id: `flight-out-${spec.airportCode.toLowerCase()}`,
     airline: spec.outboundAirline,
@@ -1283,10 +1436,10 @@ function buildPackageFromSpec(spec: DestinationSpec): DestinationFlightPackage {
       cabin: '7-10 kg included',
       checkIn: '23-30 kg per traveler'
     },
-    pricePerPerson: spec.outboundPrice,
+    pricePerPerson: isSameCity ? 0 : spec.outboundPrice,
     status: 'on-time',
     bookingRef: `TRV-${spec.outboundCode}882K`,
-    carbonEmissionKg: 280
+    carbonEmissionKg: isSameCity ? 0 : 280
   };
 
   const returnFlight: FlightSegment = {
@@ -1316,10 +1469,10 @@ function buildPackageFromSpec(spec: DestinationSpec): DestinationFlightPackage {
       cabin: '7-10 kg included',
       checkIn: '23-30 kg per traveler'
     },
-    pricePerPerson: spec.returnPrice,
+    pricePerPerson: isSameCity ? 0 : spec.returnPrice,
     status: 'scheduled',
     bookingRef: `TRV-${spec.returnCode}991P`,
-    carbonEmissionKg: 295
+    carbonEmissionKg: isSameCity ? 0 : 295
   };
 
   const alternatives: FlightOption[] = [
@@ -1476,7 +1629,10 @@ function buildPackageFromSpec(spec: DestinationSpec): DestinationFlightPackage {
     returnFlight,
     alternativeFlights: alternatives,
     airportTransfer: transfer,
-    airportGuide: guide
+    airportGuide: guide,
+    isSameCity,
+    requiresFlight: !isSameCity,
+    message: isSameCity ? 'No flight required — origin and destination are the same city.' : undefined
   };
 }
 
@@ -1485,7 +1641,12 @@ function buildPackageFromSpec(spec: DestinationSpec): DestinationFlightPackage {
  * Generates mathematically consistent flight timings, authentic regional airlines, IATA airport codes,
  * realistic roundtrip airfare, transfers, and guides.
  */
-function generateDynamicFlightPackage(destination: string, countryHint?: string): DestinationFlightPackage {
+function generateDynamicFlightPackage(
+  destination: string, 
+  countryHint?: string, 
+  originOverride?: Airport | null, 
+  isSameCity?: boolean
+): DestinationFlightPackage {
   const cleanDest = destination.trim() || 'Global Destination';
   const parts = cleanDest.split(/[,–-]/);
   const city = parts[0].trim();
@@ -1528,10 +1689,14 @@ function generateDynamicFlightPackage(destination: string, countryHint?: string)
     returnDuration: duration,
     outboundPrice,
     returnPrice,
-    originHub: {
-      city: isDomestic ? 'Mumbai' : 'Delhi',
-      code: isDomestic ? 'BOM' : 'DEL',
-      airport: isDomestic ? 'Chhatrapati Shivaji Maharaj Int\'l (T2)' : 'Indira Gandhi Int\'l Airport (T3)'
+    originHub: originOverride ? {
+      city: originOverride.city,
+      code: originOverride.airportCode,
+      airport: originOverride.airportName
+    } : {
+      city: isDomestic ? (code === 'BOM' ? 'Delhi' : 'Mumbai') : 'Delhi',
+      code: isDomestic ? (code === 'BOM' ? 'DEL' : 'BOM') : 'DEL',
+      airport: isDomestic ? (code === 'BOM' ? "Indira Gandhi Int'l Airport (T3)" : "Chhatrapati Shivaji Maharaj Int'l (T2)") : "Indira Gandhi Int'l Airport (T3)"
     },
     distanceToHotelKm: isDomestic ? 24 : 32,
     driveMins: isDomestic ? 35 : 45,
@@ -1566,7 +1731,7 @@ function generateDynamicFlightPackage(destination: string, countryHint?: string)
     advice: `Roundtrip flights to ${city}, ${country} are currently 20% lower than historical peak travel averages.`
   };
 
-  return buildPackageFromSpec(spec);
+  return buildPackageFromSpec(spec, originOverride, isSameCity);
 }
 
 /**
@@ -1574,8 +1739,56 @@ function generateDynamicFlightPackage(destination: string, countryHint?: string)
  * based on the trip destination (e.g. Korea, Japan, France, USA, UK, Dubai, Switzerland, Bali, Germany, etc.)
  * Covers all countries entered by the user with 100% accurate roundtrip flight legs!
  */
-export function getFlightDataForDestination(destination: string = '', fallbackCountry?: string): DestinationFlightPackage {
-  const norm = `${destination} ${fallbackCountry || ''}`.toLowerCase().trim();
+export function getFlightDataForDestination(
+  destination: string = '', 
+  originOrFallbackCountry?: string, 
+  fallbackCountry?: string
+): DestinationFlightPackage {
+  const destNorm = `${destination} ${fallbackCountry || ''}`.toLowerCase().trim();
+
+  // 1. Resolve origin airport if provided
+  let originAirport: Airport | null = null;
+  if (originOrFallbackCountry) {
+    originAirport = resolveCanonicalAirport(originOrFallbackCountry);
+  }
+
+  const destAirport = resolveCanonicalAirport(destination);
+  const isSameCity = Boolean(
+    destAirport && originAirport && destAirport.airportCode === originAirport.airportCode
+  );
+
+  // If origin was not provided, dynamically pick a logical origin distinct from destination
+  if (!originAirport) {
+    if (destAirport?.airportCode === 'DEL') {
+      originAirport = resolveCanonicalAirport('chennai'); // Chennai MAA -> DEL
+    } else if (destAirport?.airportCode === 'BOM') {
+      originAirport = resolveCanonicalAirport('delhi'); // Delhi DEL -> BOM
+    } else if (destAirport?.airportCode === 'MAA') {
+      originAirport = resolveCanonicalAirport('delhi'); // Delhi DEL -> MAA
+    } else {
+      originAirport = resolveCanonicalAirport('mumbai'); // Default BOM
+    }
+  }
+
+  // 0a. DELHI (INDIA)
+  if (destNorm.includes('delhi') || destNorm.includes('dilli')) {
+    const isDelhiSameCity = isSameCity || (originAirport?.airportCode === 'DEL' && Boolean(originOrFallbackCountry?.toLowerCase().includes('delhi')));
+    return buildPackageFromSpec(DESTINATION_SPECS.delhi, originAirport, isDelhiSameCity);
+  }
+
+  // 0b. CHENNAI (INDIA)
+  if (destNorm.includes('chennai') || destNorm.includes('madras')) {
+    const isChennaiSameCity = isSameCity || (originAirport?.airportCode === 'MAA' && Boolean(originOrFallbackCountry?.toLowerCase().includes('chennai')));
+    return buildPackageFromSpec(DESTINATION_SPECS.chennai, originAirport, isChennaiSameCity);
+  }
+
+  // 0c. MUMBAI (INDIA)
+  if (destNorm.includes('mumbai') || destNorm.includes('bombay')) {
+    const isMumbaiSameCity = isSameCity || (originAirport?.airportCode === 'BOM' && Boolean(originOrFallbackCountry?.toLowerCase().includes('mumbai')));
+    return buildPackageFromSpec(DESTINATION_SPECS.mumbai, originAirport, isMumbaiSameCity);
+  }
+
+  const norm = destNorm;
 
   // 1. SOUTH KOREA / SEOUL / BUSAN / JEJU
   if (norm.includes('korea') || norm.includes('seoul') || norm.includes('incheon') || norm.includes('busan') || norm.includes('jeju')) {
@@ -1852,15 +2065,23 @@ export function getFlightDataForDestination(destination: string = '', fallbackCo
       norm.includes(spec.cityName.toLowerCase()) ||
       norm.includes(spec.airportCode.toLowerCase())
     ) {
-      return buildPackageFromSpec(spec);
+      return buildPackageFromSpec(spec, originAirport, isSameCity);
     }
   }
 
   // 8. India Domestic Fallback (if destination is inside India)
   if (norm.includes('india')) {
-    return buildPackageFromSpec(DESTINATION_SPECS.goa);
+    return buildPackageFromSpec(DESTINATION_SPECS.goa, originAirport, isSameCity);
   }
 
   // 9. Intelligent Generic Generator for any custom or novel country/destination entered by the user
-  return generateDynamicFlightPackage(destination, fallbackCountry);
+  return generateDynamicFlightPackage(destination, fallbackCountry, originAirport, isSameCity);
+}
+
+export function getFlightData(
+  origin: string = 'Chennai',
+  destination: string = 'Delhi',
+  fallbackCountry?: string
+): DestinationFlightPackage {
+  return getFlightDataForDestination(destination, origin, fallbackCountry);
 }

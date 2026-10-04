@@ -101,10 +101,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
 
   // Destination Flight Package & Airfare Calculation
   const flightData = useMemo(() => {
-    return getFlightDataForDestination(trip.destination);
-  }, [trip.destination]);
+    return getFlightDataForDestination(trip.destination, trip.origin);
+  }, [trip.destination, trip.origin]);
 
   const baseRoundtripFlightPrice = useMemo(() => {
+    if (flightData.isSameCity) return 0;
     const outbound = flightData.outboundFlight?.pricePerPerson || 3850;
     const ret = flightData.returnFlight?.pricePerPerson || 4120;
     return outbound + ret;

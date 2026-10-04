@@ -2,6 +2,7 @@ import { TripPlan, DestinationCardData, Currency, CurrencyRate, UserPreferences 
 import { getFlightDataForDestination } from './flightData';
 import { detectCountryFromDestination } from './currencyHelper';
 import { calculateTravelDateRange, calculateTripDayDate, getTodayISO } from '../utils/dateUtils';
+import { resolveCanonicalLocation, resolveAirport } from '../services/canonicalLocationService';
 
 export const CURRENCY_RATES: Record<Currency, CurrencyRate> = {
   INR: { symbol: '₹', rateFromINR: 1 },
@@ -32,7 +33,12 @@ export const formatCurrency = (amountInINR: number | null | undefined, currency:
 export const DEFAULT_GOA_TRIP: TripPlan = {
   id: 'trip-goa-01',
   destination: 'Goa, India',
+  origin: 'Mumbai, India',
   country: 'India',
+  originLocation: resolveCanonicalLocation('mumbai') || undefined,
+  destinationLocation: resolveCanonicalLocation('goa') || undefined,
+  originAirport: resolveAirport('mumbai') || undefined,
+  destinationAirport: resolveAirport('goa') || undefined,
   tagline: 'Sun-kissed beaches, Portuguese heritage, vibrant coastal shacks & lush spice plantations',
   heroImage: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=1200&auto=format&fit=crop',
   days: 5,
@@ -631,7 +637,12 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
   {
     id: 'trip-kerala-02',
     destination: 'Kerala, India',
+    origin: 'Bengaluru, India',
     country: 'India',
+    originLocation: resolveCanonicalLocation('bengaluru') || undefined,
+    destinationLocation: resolveCanonicalLocation('kochi') || undefined,
+    originAirport: resolveAirport('BLR') || undefined,
+    destinationAirport: resolveAirport('COK') || undefined,
     tagline: 'God’s Own Country: Houseboats, Spice Hills & Ayurvedic Sanctuaries',
     heroImage: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?q=80&w=800&auto=format&fit=crop',
     days: 7,
@@ -680,7 +691,12 @@ export const INITIAL_SAVED_TRIPS: TripPlan[] = [
   {
     id: 'trip-rajasthan-03',
     destination: 'Rajasthan, India',
+    origin: 'Delhi, India',
     country: 'India',
+    originLocation: resolveCanonicalLocation('delhi') || undefined,
+    destinationLocation: resolveCanonicalLocation('jaipur') || undefined,
+    originAirport: resolveAirport('DEL') || undefined,
+    destinationAirport: resolveAirport('JAI') || undefined,
     tagline: 'Land of Maharajas: Majestic Forts, Golden Sands & Regal Palaces',
     heroImage: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?q=80&w=800&auto=format&fit=crop',
     days: 6,
@@ -722,7 +738,8 @@ export const generateTripFromPrompt = (
   preferences: string[] = ['Relaxation', 'Food & Culture'],
   customDates?: string,
   startDateInput?: string,
-  userPreferences?: UserPreferences
+  userPreferences?: UserPreferences,
+  originInput?: string
 ): TripPlan => {
   const destLower = destination.toLowerCase();
 
@@ -775,8 +792,25 @@ export const generateTripFromPrompt = (
   const miscBudget = isBudget ? 1000 : 2000;
   
   const detectedCountry = detectCountryFromDestination(destination);
-  const destFlightData = getFlightDataForDestination(destination, detectedCountry.countryName);
-  const flightPerPerson = (destFlightData.outboundFlight?.pricePerPerson || 3850) + (destFlightData.returnFlight?.pricePerPerson || 4120);
+  const canonicalDest = resolveCanonicalLocation(destination, detectedCountry.countryName);
+
+  // Dynamic canonical origin determination
+  let canonicalOrigin = originInput ? resolveCanonicalLocation(originInput) : null;
+  if (!canonicalOrigin) {
+    if (canonicalDest?.city.toLowerCase() === 'delhi' || destLower.includes('delhi')) {
+      canonicalOrigin = resolveCanonicalLocation('chennai'); // Chennai for Delhi trip
+    } else if (canonicalDest?.city.toLowerCase() === 'mumbai' || destLower.includes('mumbai')) {
+      canonicalOrigin = resolveCanonicalLocation('delhi');
+    } else if (canonicalDest?.city.toLowerCase() === 'chennai' || destLower.includes('chennai')) {
+      canonicalOrigin = resolveCanonicalLocation('delhi');
+    } else {
+      canonicalOrigin = resolveCanonicalLocation('mumbai');
+    }
+  }
+
+  const effectiveOriginStr = canonicalOrigin ? `${canonicalOrigin.city}, ${canonicalOrigin.country}` : (originInput || 'Chennai, India');
+  const destFlightData = getFlightDataForDestination(destination, effectiveOriginStr, detectedCountry.countryName);
+  const flightPerPerson = destFlightData.isSameCity ? 0 : ((destFlightData.outboundFlight?.pricePerPerson || 3850) + (destFlightData.returnFlight?.pricePerPerson || 4120));
   const flightBudget = flightPerPerson * travelers;
   const total = hotelBudget + flightBudget + foodBudget + transportBudget + activitiesBudget + miscBudget;
 
@@ -853,7 +887,12 @@ export const generateTripFromPrompt = (
   return {
     id: `trip-${Date.now()}`,
     destination: destination || 'Custom Trip',
+    origin: effectiveOriginStr,
     country: detectedCountry.countryName,
+    originLocation: canonicalOrigin || undefined,
+    destinationLocation: canonicalDest || undefined,
+    originAirport: resolveAirport(canonicalOrigin?.city || effectiveOriginStr) || undefined,
+    destinationAirport: resolveAirport(canonicalDest?.city || destination) || undefined,
     tagline,
     heroImage,
     days: dateRange.durationDays,

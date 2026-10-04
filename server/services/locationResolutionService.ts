@@ -299,12 +299,155 @@ export const VERIFIED_LANDMARK_CATALOG: LandmarkCatalogEntry[] = [
     destination: 'swiss',
     coords: { latitude: 46.5475, longitude: 7.9854 },
     displayName: 'Jungfraujoch Top of Europe, Switzerland'
+  },
+
+  // --- DELHI, INDIA ---
+  {
+    names: ['red fort', 'lal qila', 'old delhi fort', 'red fort ramparts'],
+    destination: 'delhi',
+    coords: { latitude: 28.6562, longitude: 77.2410 },
+    displayName: 'Red Fort (Lal Qila), Old Delhi'
+  },
+  {
+    names: ['india gate', 'kartavya path', 'rajpath', 'war memorial'],
+    destination: 'delhi',
+    coords: { latitude: 28.6129, longitude: 77.2295 },
+    displayName: 'India Gate & Kartavya Path, New Delhi'
+  },
+  {
+    names: ["humayun's tomb", 'humayun tomb', 'humayun tomb gardens', 'nizamuddin'],
+    destination: 'delhi',
+    coords: { latitude: 28.5875, longitude: 77.2507 },
+    displayName: "Humayun's Tomb, New Delhi"
+  },
+  {
+    names: ['qutub minar', 'qutb minar', 'mehrauli archaeological park', 'mehrauli'],
+    destination: 'delhi',
+    coords: { latitude: 28.5244, longitude: 77.1855 },
+    displayName: 'Qutub Minar Complex, Mehrauli, New Delhi'
+  },
+  {
+    names: ['chandni chowk', 'jama masjid', 'paranthe wali gali', 'dariba kalan'],
+    destination: 'delhi',
+    coords: { latitude: 28.6507, longitude: 77.2334 },
+    displayName: 'Chandni Chowk & Jama Masjid, Old Delhi'
+  },
+  {
+    names: ['lotus temple', 'bahai house of worship', 'kalkaji'],
+    destination: 'delhi',
+    coords: { latitude: 28.5535, longitude: 77.2588 },
+    displayName: 'Lotus Temple, Kalkaji, New Delhi'
+  },
+  {
+    names: ['national museum', 'janpath', 'connaught place', 'cp', 'inner circle'],
+    destination: 'delhi',
+    coords: { latitude: 28.6118, longitude: 77.2193 },
+    displayName: 'National Museum & Janpath, New Delhi'
+  },
+  {
+    names: ['delhi airport', 'indira gandhi international airport', 'igi airport', 'del'],
+    destination: 'delhi',
+    coords: { latitude: 28.5562, longitude: 77.1000 },
+    displayName: 'Indira Gandhi International Airport (DEL), New Delhi'
+  },
+
+  // --- CHENNAI, INDIA ---
+  {
+    names: ['marina beach', 'marina promenade', 'kamarajar salai'],
+    destination: 'chennai',
+    coords: { latitude: 13.0500, longitude: 80.2824 },
+    displayName: 'Marina Beach, Chennai'
+  },
+  {
+    names: ['kapaleeshwarar temple', 'mylapore temple', 'mylapore'],
+    destination: 'chennai',
+    coords: { latitude: 13.0336, longitude: 80.2699 },
+    displayName: 'Kapaleeshwarar Temple, Mylapore, Chennai'
+  },
+  {
+    names: ['san thome basilica', 'st thomas cathedral', 'santhome'],
+    destination: 'chennai',
+    coords: { latitude: 13.0334, longitude: 80.2785 },
+    displayName: 'San Thome Basilica, Chennai'
+  },
+  {
+    names: ['fort st george', 'st george museum'],
+    destination: 'chennai',
+    coords: { latitude: 13.0797, longitude: 80.2874 },
+    displayName: 'Fort St. George, Chennai'
+  },
+  {
+    names: ['chennai airport', 'meenambakkam', 'maa'],
+    destination: 'chennai',
+    coords: { latitude: 12.9941, longitude: 80.1709 },
+    displayName: 'Chennai International Airport (MAA), Chennai'
+  },
+
+  // --- MUMBAI, INDIA ---
+  {
+    names: ['gateway of india', 'colaba promenade', 'colaba'],
+    destination: 'mumbai',
+    coords: { latitude: 18.9220, longitude: 72.8347 },
+    displayName: 'Gateway of India, Colaba, Mumbai'
+  },
+  {
+    names: ['marine drive', 'chowpatty', 'queens necklace'],
+    destination: 'mumbai',
+    coords: { latitude: 18.9432, longitude: 72.8230 },
+    displayName: 'Marine Drive & Chowpatty, Mumbai'
+  },
+  {
+    names: ['chhatrapati shivaji terminus', 'cst', 'victoria terminus'],
+    destination: 'mumbai',
+    coords: { latitude: 18.9401, longitude: 72.8354 },
+    displayName: 'Chhatrapati Shivaji Maharaj Terminus, Mumbai'
+  },
+  {
+    names: ['mumbai airport', 'csmi airport', 'bom'],
+    destination: 'mumbai',
+    coords: { latitude: 19.0896, longitude: 72.8656 },
+    displayName: 'Chhatrapati Shivaji Maharaj Int’l Airport (BOM), Mumbai'
+  },
+
+  // --- BENGALURU, INDIA ---
+  {
+    names: ['lalbagh', 'lalbagh botanical garden', 'glass house'],
+    destination: 'bengaluru',
+    coords: { latitude: 12.9507, longitude: 77.5848 },
+    displayName: 'Lalbagh Botanical Garden, Bengaluru'
+  },
+  {
+    names: ['bangalore palace', 'palace grounds'],
+    destination: 'bengaluru',
+    coords: { latitude: 13.0035, longitude: 77.5891 },
+    displayName: 'Bangalore Palace, Bengaluru'
+  },
+  {
+    names: ['cubbon park', 'vidhana soudha'],
+    destination: 'bengaluru',
+    coords: { latitude: 12.9796, longitude: 77.5907 },
+    displayName: 'Cubbon Park & Vidhana Soudha, Bengaluru'
+  },
+  {
+    names: ['bengaluru airport', 'kempegowda airport', 'blr'],
+    destination: 'bengaluru',
+    coords: { latitude: 13.1986, longitude: 77.7066 },
+    displayName: 'Kempegowda International Airport (BLR), Bengaluru'
   }
 ];
 
 // City center fallbacks (used strictly when an activity explicitly names the city center)
 export const CITY_CENTERS: Record<string, Coordinates> = {
+  delhi: { latitude: 28.6139, longitude: 77.2090 },
+  chennai: { latitude: 13.0827, longitude: 80.2707 },
+  mumbai: { latitude: 19.0760, longitude: 72.8777 },
+  bengaluru: { latitude: 12.9716, longitude: 77.5946 },
   goa: { latitude: 15.4989, longitude: 73.8311 },
+  hyderabad: { latitude: 17.3850, longitude: 78.4867 },
+  kolkata: { latitude: 22.5726, longitude: 88.3639 },
+  jaipur: { latitude: 26.9124, longitude: 75.7873 },
+  kochi: { latitude: 9.9312, longitude: 76.2673 },
+  kerala: { latitude: 9.9312, longitude: 76.2673 },
   paris: { latitude: 48.8566, longitude: 2.3522 },
   kyoto: { latitude: 35.0116, longitude: 135.7681 },
   tokyo: { latitude: 35.6762, longitude: 139.6503 },
@@ -313,7 +456,11 @@ export const CITY_CENTERS: Record<string, Coordinates> = {
   swiss: { latitude: 46.6863, longitude: 7.8632 },
   amalfi: { latitude: 40.6340, longitude: 14.6027 },
   london: { latitude: 51.5074, longitude: -0.1278 },
-  new_york: { latitude: 40.7128, longitude: -74.0060 }
+  new_york: { latitude: 40.7128, longitude: -74.0060 },
+  singapore: { latitude: 1.3521, longitude: 103.8198 },
+  dubai: { latitude: 25.2048, longitude: 55.2708 },
+  bangkok: { latitude: 13.7563, longitude: 100.5018 },
+  seoul: { latitude: 37.5665, longitude: 126.9780 }
 };
 
 export const VERIFIED_DESTINATION_CENTROIDS = CITY_CENTERS;

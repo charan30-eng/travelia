@@ -99,10 +99,11 @@ export const EstimatedBudgetSection: React.FC<EstimatedBudgetSectionProps> = ({
 
   // Flight Intelligence Data based on Trip Destination
   const destinationFlightPackage = useMemo(() => {
-    return getFlightDataForDestination(trip.destination);
-  }, [trip.destination]);
+    return getFlightDataForDestination(trip.destination, trip.origin);
+  }, [trip.destination, trip.origin]);
 
   const baseRoundtripFlightPrice = useMemo(() => {
+    if (destinationFlightPackage.isSameCity) return 0;
     const outbound = destinationFlightPackage.outboundFlight?.pricePerPerson || 3850;
     const ret = destinationFlightPackage.returnFlight?.pricePerPerson || 4120;
     return outbound + ret;

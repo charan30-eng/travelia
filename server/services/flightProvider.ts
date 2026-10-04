@@ -11,6 +11,7 @@
  */
 
 import { NormalizedFlightOffer, FlightSearchParams, FlightSearchResponse } from '../types/flights';
+import { resolveAirport as resolveCanonicalAirport } from './canonicalLocationService';
 
 export interface IFlightProvider {
   name: string;
@@ -20,6 +21,8 @@ export interface IFlightProvider {
     returnFlights: NormalizedFlightOffer[];
     source: 'amadeus' | 'skyscanner' | 'demo' | 'unavailable';
     dataStatus: 'live' | 'demo' | 'unavailable';
+    isSameCity?: boolean;
+    message?: string;
   }>;
 }
 
@@ -29,28 +32,15 @@ interface AirportInfo {
   name: string;
 }
 
-const CITY_TO_AIRPORT: Record<string, AirportInfo> = {
-  'mumbai': { code: 'BOM', city: 'Mumbai', name: 'Chhatrapati Shivaji Maharaj Int\'l Airport (T2)' },
-  'delhi': { code: 'DEL', city: 'Delhi', name: 'Indira Gandhi Int\'l Airport (T3)' },
-  'bangalore': { code: 'BLR', city: 'Bengaluru', name: 'Kempegowda Int\'l Airport (T2)' },
-  'goa': { code: 'GOX', city: 'Goa', name: 'Manohar International Airport, Mopa (T1)' },
-  'tokyo': { code: 'HND', city: 'Tokyo', name: 'Tokyo Haneda International Airport (T3)' },
-  'paris': { code: 'CDG', city: 'Paris', name: 'Paris Charles de Gaulle Airport (T2E)' },
-  'rome': { code: 'FCO', city: 'Rome', name: 'Leonardo da Vinci–Fiumicino Airport (T3)' },
-  'london': { code: 'LHR', city: 'London', name: 'London Heathrow Airport (T5)' },
-  'zurich': { code: 'ZRH', city: 'Zurich', name: 'Zurich Kloten Airport' },
-  'bali': { code: 'DPS', city: 'Bali', name: 'Ngurah Rai International Airport' },
-  'kyoto': { code: 'KIX', city: 'Osaka/Kyoto', name: 'Kansai International Airport (T1)' }
-};
-
 function resolveAirport(query: string): AirportInfo | null {
-  const clean = query.toLowerCase().trim();
-  for (const [key, info] of Object.entries(CITY_TO_AIRPORT)) {
-    if (clean.includes(key) || key.includes(clean) || clean.includes(info.code.toLowerCase())) {
-      return info;
-    }
-  }
-  return null;
+  if (!query) return null;
+  const apt = resolveCanonicalAirport(query);
+  if (!apt) return null;
+  return {
+    code: apt.airportCode,
+    city: apt.city,
+    name: apt.airportName
+  };
 }
 
 export class FlightProvider implements IFlightProvider {
@@ -70,9 +60,16 @@ export class FlightProvider implements IFlightProvider {
     returnFlights: NormalizedFlightOffer[];
     source: 'amadeus' | 'skyscanner' | 'demo' | 'unavailable';
     dataStatus: 'live' | 'demo' | 'unavailable';
+    isSameCity?: boolean;
+    message?: string;
   }> {
-    const originAirport = resolveAirport(params.origin) || resolveAirport('mumbai')!;
     const destAirport = resolveAirport(params.destination);
+    let originAirport = resolveAirport(params.origin);
+
+    if (!originAirport) {
+      // Pick a distinct default hub if user did not provide origin
+      originAirport = (destAirport?.code === 'BOM') ? resolveAirport('delhi')! : resolveAirport('mumbai')!;
+    }
 
     // If destination has no known airport or route and live API is unconfigured:
     if (!destAirport) {
@@ -81,6 +78,18 @@ export class FlightProvider implements IFlightProvider {
         returnFlights: [],
         source: 'unavailable',
         dataStatus: 'unavailable'
+      };
+    }
+
+    // Explicit guard: Same city / same airport trip requires no flight
+    if (originAirport && destAirport && originAirport.code === destAirport.code) {
+      return {
+        outbound: [],
+        returnFlights: [],
+        source: 'unavailable',
+        dataStatus: 'unavailable',
+        isSameCity: true,
+        message: 'No flight required — origin and destination are the same city.'
       };
     }
 

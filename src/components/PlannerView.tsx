@@ -13,7 +13,8 @@ import {
   ShieldAlert, 
   Info,
   X,
-  Compass
+  Compass,
+  PlaneTakeoff
 } from 'lucide-react';
 import { TripPreference, TripPlan } from '../types';
 import { calculateTravelDateRange, getTodayISO, isWithinWeatherForecastWindow } from '../utils/dateUtils';
@@ -25,9 +26,11 @@ interface PlannerViewProps {
     travelers: number, 
     preferences: TripPreference[],
     customDates?: string,
-    startDate?: string
+    startDate?: string,
+    origin?: string
   ) => void;
   initialDestination?: string;
+  initialOrigin?: string;
   isGenerating?: boolean;
 }
 
@@ -56,9 +59,11 @@ const POPULAR_SUGGESTIONS = [
 export const PlannerView: React.FC<PlannerViewProps> = ({
   onGenerateTrip,
   initialDestination = '',
+  initialOrigin = '',
   isGenerating = false,
 }) => {
   const todayISO = React.useMemo(() => getTodayISO(), []);
+  const [origin, setOrigin] = useState(initialOrigin || '');
   const [destination, setDestination] = useState(initialDestination || '');
   const [startDate, setStartDate] = useState<string>(todayISO);
   const [days, setDays] = useState(5);
@@ -76,6 +81,13 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   React.useEffect(() => {
     setDestination(initialDestination || '');
   }, [initialDestination]);
+
+  // Sync origin state if initialOrigin changes
+  React.useEffect(() => {
+    if (initialOrigin) {
+      setOrigin(initialOrigin);
+    }
+  }, [initialOrigin]);
   const [selectedPreferences, setSelectedPreferences] = useState<TripPreference[]>([
     'Relaxation',
     'Food & Culture',
@@ -126,7 +138,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!destination.trim()) return;
-    onGenerateTrip(destination, days, travelers, selectedPreferences, dates, startDate);
+    onGenerateTrip(destination, days, travelers, selectedPreferences, dates, startDate, origin.trim() || undefined);
   };
 
   return (
@@ -153,34 +165,67 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
           
           <form onSubmit={handleSubmit} className="space-y-8">
             
-            {/* 1. Destination Input */}
+            {/* 1. Origin & Destination Inputs */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#191919] mb-2.5">
-                Destination / Place
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <MapPin className="w-5 h-5 text-[#344E27]" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#191919] mb-2.5">
+                    Starting From <span className="text-neutral-400 font-normal lowercase">(Origin City / Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <PlaneTakeoff className="w-5 h-5 text-[#344E27]" />
+                    </div>
+                    <input
+                      id="origin-input"
+                      type="text"
+                      value={origin}
+                      onChange={(e) => setOrigin(e.target.value)}
+                      placeholder="e.g. Chennai, Mumbai, Bengaluru..."
+                      className="w-full pl-12 pr-10 py-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-base font-semibold text-[#191919] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:border-transparent transition-all placeholder:text-neutral-400"
+                    />
+                    {origin && (
+                      <button
+                        type="button"
+                        onClick={() => setOrigin('')}
+                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-700 cursor-pointer transition-colors"
+                        title="Clear origin"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <input
-                  id="destination-input"
-                  type="text"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  placeholder="Enter any city or landmark (e.g. Kyoto, Paris, Bali, New York...)"
-                  className="w-full pl-12 pr-10 py-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-base font-semibold text-[#191919] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:border-transparent transition-all placeholder:text-neutral-400"
-                  required
-                />
-                {destination && (
-                  <button
-                    type="button"
-                    onClick={() => setDestination('')}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-700 cursor-pointer transition-colors"
-                    title="Clear destination"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#191919] mb-2.5">
+                    Destination / Place
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <MapPin className="w-5 h-5 text-[#344E27]" />
+                    </div>
+                    <input
+                      id="destination-input"
+                      type="text"
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                      placeholder="Enter city (e.g. Delhi, Kyoto, Paris...)"
+                      className="w-full pl-12 pr-10 py-4 rounded-2xl bg-neutral-50 border border-neutral-200 text-base font-semibold text-[#191919] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#344E27] focus:border-transparent transition-all placeholder:text-neutral-400"
+                      required
+                    />
+                    {destination && (
+                      <button
+                        type="button"
+                        onClick={() => setDestination('')}
+                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-700 cursor-pointer transition-colors"
+                        title="Clear destination"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Quick suggestion pills */}
