@@ -30,6 +30,8 @@ export interface CanonicalLocation {
   timezone?: string;
   source: LocationSource;
   status: LocationStatus;
+  entityType?: 'country' | 'city' | 'region' | 'place';
+  displayName?: string;
   resolvedAt?: string;
 }
 

@@ -5,9 +5,11 @@
  * Google Places API (New) integration with explicit live vs demo states.
  */
 
-export type PlaceSource = 'google' | 'demo' | 'mixed' | 'unavailable';
+import { CanonicalLocation } from './location';
 
-export type PlaceDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable';
+export type PlaceSource = 'google' | 'verified_catalog' | 'demo' | 'fallback' | 'mixed' | 'unavailable';
+
+export type PlaceDataStatus = 'live' | 'cached' | 'demo' | 'fallback' | 'partial' | 'unavailable';
 
 export type PlaceCategory = 
   | 'hotel'
@@ -42,12 +44,16 @@ export interface TraveliaPlace {
   source: PlaceSource;
   sourceId?: string;
   providerId?: string; // alias for backwards compatibility
+  providerPlaceId?: string; // authoritative provider place ID (e.g. Google Place ID ChIJ...)
   name: string;
   category: PlaceCategory;
   types?: string[];
   latitude: number;
   longitude: number;
   address?: string;
+  city?: string;
+  country?: string;
+  countryCode?: string;
   rating?: number;
   userRatingsTotal?: number;
   openingHours?: PlaceOpeningHours;
@@ -62,6 +68,8 @@ export interface TraveliaPlace {
   // Optional travel context metadata (if available or estimated honestly)
   estimatedCost?: number | null;
   estimatedDuration?: string;
+  durationSource?: 'provider' | 'travelia_estimate' | 'unavailable';
+  priceSource?: 'provider' | 'verified_admission' | 'unavailable';
   description?: string;
   tag?: string;
   amenities?: string[];
@@ -80,6 +88,8 @@ export interface PlacesResponse {
   fetchedAt: string;
   totalCount: number;
   places: TraveliaPlace[];
+  canonicalLocation?: CanonicalLocation;
+  locationContext?: string; // e.g. "Top attractions across Norway" or "Top attractions in Delhi, India"
   cacheAgeSeconds?: number;
   error?: {
     code: string;
@@ -89,6 +99,10 @@ export interface PlacesResponse {
 
 export interface PlaceSearchParams {
   destination: string;
+  destinationPlaceId?: string;
+  city?: string;
+  country?: string;
+  countryCode?: string;
   query?: string;
   category?: PlaceCategory;
   latitude?: number;

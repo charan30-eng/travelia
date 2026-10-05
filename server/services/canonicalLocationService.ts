@@ -22,7 +22,8 @@ export const COUNTRY_BOUNDING_BOXES: Record<string, GeographicBounds> = {
   AE: { minLat: 22.5, maxLat: 26.5, minLng: 51.0, maxLng: 56.5 },    // United Arab Emirates
   SG: { minLat: 1.15, maxLat: 1.48, minLng: 103.55, maxLng: 104.1 }, // Singapore
   TH: { minLat: 5.5, maxLat: 20.5, minLng: 97.0, maxLng: 106.0 },    // Thailand
-  KR: { minLat: 33.0, maxLat: 38.8, minLng: 124.5, maxLng: 131.0 }   // South Korea
+  KR: { minLat: 33.0, maxLat: 38.8, minLng: 124.5, maxLng: 131.0 },  // South Korea
+  NO: { minLat: 57.9, maxLat: 71.2, minLng: 4.5, maxLng: 31.1 }      // Norway
 };
 
 // Authoritative Canonical Location Catalog
@@ -312,7 +313,140 @@ export const CANONICAL_LOCATIONS: Record<string, CanonicalLocation> = {
     longitude: 126.9780,
     timezone: 'Asia/Seoul',
     source: 'catalog',
-    status: 'verified'
+    status: 'verified',
+    entityType: 'city'
+  },
+  norway: {
+    id: 'loc-no-norway',
+    name: 'Norway',
+    city: 'Oslo',
+    country: 'Norway',
+    countryCode: 'NO',
+    latitude: 59.9139,
+    longitude: 10.7522,
+    timezone: 'Europe/Oslo',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'country',
+    displayName: 'Norway (Top Attractions Across Country)'
+  },
+  oslo: {
+    id: 'loc-no-oslo',
+    name: 'Oslo',
+    city: 'Oslo',
+    country: 'Norway',
+    countryCode: 'NO',
+    latitude: 59.9139,
+    longitude: 10.7522,
+    timezone: 'Europe/Oslo',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'city'
+  },
+  bergen: {
+    id: 'loc-no-bergen',
+    name: 'Bergen',
+    city: 'Bergen',
+    country: 'Norway',
+    countryCode: 'NO',
+    latitude: 60.3913,
+    longitude: 5.3221,
+    timezone: 'Europe/Oslo',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'city'
+  },
+  india: {
+    id: 'loc-in-india',
+    name: 'India',
+    city: 'Delhi',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 28.6139,
+    longitude: 77.2090,
+    timezone: 'Asia/Kolkata',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'country'
+  },
+  france: {
+    id: 'loc-fr-france',
+    name: 'France',
+    city: 'Paris',
+    country: 'France',
+    countryCode: 'FR',
+    latitude: 48.8566,
+    longitude: 2.3522,
+    timezone: 'Europe/Paris',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'country'
+  },
+  japan: {
+    id: 'loc-jp-japan',
+    name: 'Japan',
+    city: 'Tokyo',
+    country: 'Japan',
+    countryCode: 'JP',
+    latitude: 35.6762,
+    longitude: 139.6503,
+    timezone: 'Asia/Tokyo',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'country'
+  },
+  united_kingdom: {
+    id: 'loc-gb-uk',
+    name: 'United Kingdom',
+    city: 'London',
+    country: 'United Kingdom',
+    countryCode: 'GB',
+    latitude: 51.5074,
+    longitude: -0.1278,
+    timezone: 'Europe/London',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'country'
+  },
+  uae: {
+    id: 'loc-ae-uae',
+    name: 'United Arab Emirates',
+    city: 'Dubai',
+    country: 'United Arab Emirates',
+    countryCode: 'AE',
+    latitude: 25.2048,
+    longitude: 55.2708,
+    timezone: 'Asia/Dubai',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'country'
+  },
+  taj_mahal: {
+    id: 'loc-in-tajmahal',
+    name: 'Taj Mahal',
+    city: 'Agra',
+    state: 'Uttar Pradesh',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 27.1751,
+    longitude: 78.0421,
+    timezone: 'Asia/Kolkata',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'place'
+  },
+  eiffel_tower: {
+    id: 'loc-fr-eiffeltower',
+    name: 'Eiffel Tower',
+    city: 'Paris',
+    country: 'France',
+    countryCode: 'FR',
+    latitude: 48.8584,
+    longitude: 2.2945,
+    timezone: 'Europe/Paris',
+    source: 'catalog',
+    status: 'verified',
+    entityType: 'place'
   }
 };
 
@@ -331,7 +465,20 @@ export const LOCATION_ALIASES: Record<string, string> = {
   'new york': 'new_york',
   'amalfi coast': 'amalfi',
   'positano': 'amalfi',
-  'osaka': 'kyoto'
+  'osaka': 'kyoto',
+  'norway': 'norway',
+  'norge': 'norway',
+  'oslo': 'oslo',
+  'bergen': 'bergen',
+  'uk': 'united_kingdom',
+  'united kingdom': 'united_kingdom',
+  'great britain': 'united_kingdom',
+  'england': 'united_kingdom',
+  'britain': 'united_kingdom',
+  'uae': 'uae',
+  'united arab emirates': 'uae',
+  'taj mahal': 'taj_mahal',
+  'eiffel tower': 'eiffel_tower'
 };
 
 export const AIRPORT_REGISTRY: Record<string, Airport> = {

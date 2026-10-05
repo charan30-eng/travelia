@@ -3,23 +3,31 @@
  * 
  * Central coordinator for real tourist attractions, hotels, landmarks, and travel places.
  * Architecture:
- *   Live Google Places (New) -> Cached Google Data -> Curated Demo Fallback -> Unavailable
+ *   1. Live Google Places (New) -> 2. Unexpired Cache -> 3. Authoritative Verified Real Places Catalog -> 4. Curated Demo Fallback -> 5. Unavailable
  * 
- * Guarantees honest status labeling:
- *   - live: freshly fetched from Google Places API (New)
- *   - cached: unexpired cache hit from previously fetched Google Places API
- *   - demo: explicit fallback from curated mock catalog
- *   - partial: results with missing secondary attributes
- *   - unavailable: failed request with demo fallback disabled
- * 
- * NEVER fabricates prices, coordinates, ratings, or hours.
+ * Strict Data Integrity Rules:
+ *   - Destination-aware & Canonical Location Resolution (consumes canonical destination)
+ *   - Geographic validation against destination coordinates and country bounding boxes
+ *   - Deduplication by providerPlaceId and normalized name
+ *   - NEVER fabricates prices (₹350/₹200/₹150 eliminated), fake ratings, or fake attraction names.
+ *   - Distinguishes Countries (e.g. Norway, India) vs Cities (Delhi, Paris, Tokyo, Dubai, London, Mumbai).
  */
 
 import { TraveliaPlace, PlacesResponse, PlaceSearchParams, PlaceCategory } from '../types/places';
+import { CanonicalLocation } from '../types/location';
 import { googlePlacesProvider } from './placesEngine/googlePlacesProvider';
 import { placesCache } from './placesEngine/placesCache';
 import { demoPlacesService } from './demoPlacesService';
+import { verifiedPlacesCatalog } from './verifiedPlacesCatalog';
+import { resolveCanonicalLocation, COUNTRY_BOUNDING_BOXES } from './canonicalLocationService';
 import { VERIFIED_DESTINATION_CENTROIDS } from './locationResolutionService';
+
+export interface AttractionSearchParams extends PlaceSearchParams {
+  city?: string;
+  country?: string;
+  countryCode?: string;
+  destinationPlaceId?: string;
+}
 
 export class PlacesService {
   private isLiveEnabled: boolean;
@@ -32,7 +40,7 @@ export class PlacesService {
 
   /**
    * Universal Place Search
-   * Coordinates: Live Google -> Cache -> Demo Fallback -> Unavailable
+   * Priority: Live Google -> Unexpired Cache -> Verified Real Places Catalog -> Demo Fallback -> Unavailable
    */
   public async searchPlaces(params: PlaceSearchParams): Promise<PlacesResponse> {
     const destination = (params.destination || '').trim();
@@ -58,14 +66,46 @@ export class PlacesService {
     const category = params.category;
     const limit = params.limit || 15;
 
-    console.log(`[Places] Query: "${query || destination}" | Category: ${category || 'all'} | Dest: ${destination}`);
+    // 1. Resolve Canonical Location for destination
+    const canonical = resolveCanonicalLocation(destination, params.country);
 
-    const cacheKey = placesCache.generateKey(params);
+    let destLat = params.latitude;
+    let destLng = params.longitude;
+    let destCity = params.city || canonical?.city || destination.split(',')[0].trim();
+    let destCountry = params.country || canonical?.country || '';
+    let destCountryCode = params.countryCode || canonical?.countryCode || '';
+    const isCountryLevel = canonical?.entityType === 'country' || destination.toLowerCase() === 'norway';
 
-    // 1. Check in-memory cache first
+    if (destLat === undefined || destLng === undefined) {
+      if (canonical) {
+        destLat = canonical.latitude;
+        destLng = canonical.longitude;
+      } else {
+        const knownCentroid = VERIFIED_DESTINATION_CENTROIDS[destination.toLowerCase()] || 
+                              VERIFIED_DESTINATION_CENTROIDS[destCity.toLowerCase()];
+        if (knownCentroid) {
+          destLat = knownCentroid.latitude;
+          destLng = knownCentroid.longitude;
+        }
+      }
+    }
+
+    const locationContext = isCountryLevel 
+      ? `Top attractions across ${destCountry || destination}`
+      : `Top tourist attractions in ${destCity}${destCountry ? `, ${destCountry}` : ''}`;
+
+    // 2. Generate deterministic cache key containing destination, coords, and category
+    const cacheKey = placesCache.generateKey({
+      ...params,
+      destination: canonical?.id || destination,
+      latitude: destLat,
+      longitude: destLng
+    });
+
+    // 3. Check in-memory cache
     const cached = placesCache.get(cacheKey);
     if (cached && cached.places.length > 0) {
-      console.log(`[Places] Cache hit (${cached.ageSeconds}s old) | Source: ${cached.source} | Results: ${cached.places.length}`);
+      console.log(`[Places] Cache hit (${cached.ageSeconds}s old) | Destination: "${destination}" | Results: ${cached.places.length}`);
       return {
         success: true,
         destination,
@@ -76,61 +116,61 @@ export class PlacesService {
         fetchedAt: cached.createdAt,
         totalCount: cached.places.length,
         cacheAgeSeconds: cached.ageSeconds,
+        canonicalLocation: canonical || undefined,
+        locationContext,
         places: cached.places.slice(0, limit)
       };
     }
 
-    // 2. Attempt Live Google Places API (New)
+    // 4. Attempt Live Google Places API (New)
     const canUseLive = this.isLiveEnabled && googlePlacesProvider.isConfigured();
 
     if (canUseLive) {
       try {
         let places: TraveliaPlace[] = [];
 
-        // Determine destination coordinates if not supplied
-        let destLat = params.latitude;
-        let destLng = params.longitude;
-        if (destLat === undefined || destLng === undefined) {
-          const knownCentroid = VERIFIED_DESTINATION_CENTROIDS[destination.toLowerCase()];
-          if (knownCentroid) {
-            destLat = knownCentroid.latitude;
-            destLng = knownCentroid.longitude;
-          }
-        }
-
         // Build targeted search text query
         let searchTextQuery = query;
         if (!searchTextQuery) {
           if (category === 'hotel') {
-            searchTextQuery = `hotels in ${destination}`;
+            searchTextQuery = `hotels in ${isCountryLevel ? destCountry : `${destCity}, ${destCountry}`}`;
           } else if (category === 'restaurant') {
-            searchTextQuery = `best restaurants in ${destination}`;
+            searchTextQuery = `best restaurants in ${isCountryLevel ? destCountry : `${destCity}, ${destCountry}`}`;
           } else if (category === 'beach') {
-            searchTextQuery = `beaches in ${destination}`;
+            searchTextQuery = `beaches in ${isCountryLevel ? destCountry : `${destCity}, ${destCountry}`}`;
           } else if (category === 'museum') {
-            searchTextQuery = `museums in ${destination}`;
+            searchTextQuery = `famous museums in ${isCountryLevel ? destCountry : `${destCity}, ${destCountry}`}`;
           } else if (category === 'temple') {
-            searchTextQuery = `temples in ${destination}`;
+            searchTextQuery = `famous temples and shrines in ${isCountryLevel ? destCountry : `${destCity}, ${destCountry}`}`;
           } else {
-            searchTextQuery = `tourist attractions and landmarks in ${destination}`;
+            searchTextQuery = isCountryLevel 
+              ? `top tourist attractions and famous landmarks across ${destCountry || destination}`
+              : `top tourist attractions and famous sights in ${destCity}, ${destCountry || destination}`;
           }
-        } else if (!searchTextQuery.toLowerCase().includes(destination.toLowerCase())) {
-          searchTextQuery = `${searchTextQuery} in ${destination}`;
         }
 
+        const searchRadius = isCountryLevel ? 300000 : (params.radiusMeters || 35000);
+
         places = await googlePlacesProvider.searchText(searchTextQuery, {
-          maxResultCount: limit,
+          maxResultCount: Math.min(limit * 2, 20),
           latitude: destLat,
           longitude: destLng,
-          radiusMeters: params.radiusMeters || 20000
+          radiusMeters: searchRadius
         });
 
-        // Deduplicate places
+        // Geographically validate and sanitize every place
+        places = places.filter(p => this.validatePlaceForDestination(p, canonical, destination).valid);
+
+        // Deduplicate places by providerPlaceId & name
         places = this.deduplicatePlaces(places);
 
+        // Sort places deterministically
+        places = this.sortAttractions(places, destLat, destLng);
+
         if (places.length > 0) {
-          console.log(`[Places] Provider: google | Results: ${places.length} | Status: live`);
-          // Store in cache
+          console.log(`[Places] Destination: ${destination} | Resolved: ${destCity}, ${destCountry} (${destLat}, ${destLng}) | Provider: google | Results: ${places.length} | Status: live`);
+          
+          // Cache live Google Places response
           placesCache.set(cacheKey, places, 'google', destination, category, query, params.locale);
 
           return {
@@ -142,26 +182,57 @@ export class PlacesService {
             dataStatus: 'live',
             fetchedAt: new Date().toISOString(),
             totalCount: places.length,
+            canonicalLocation: canonical || undefined,
+            locationContext,
             places: places.slice(0, limit)
           };
         } else {
-          console.log(`[Places] Google returned 0 places for "${searchTextQuery}"`);
+          console.log(`[Places] Google returned 0 verified places for "${searchTextQuery}". Checking secondary catalog.`);
         }
       } catch (err: any) {
-        console.warn(`[Places] Live Google request failed: ${err.message}. Checking fallback options.`);
+        console.warn(`[Places] Live Google request failed: ${err.message}. Checking secondary provider.`);
       }
     } else {
       console.log(`[Places] Live Google skipped (configured: ${googlePlacesProvider.isConfigured()}, enabled: ${this.isLiveEnabled})`);
     }
 
-    // 3. Fallback to Demo Catalog if enabled
+    // 5. Secondary Provider: Authoritative Verified Real Places Catalog
+    const verifiedCatalogPlaces = verifiedPlacesCatalog.searchAttractions(destination, canonical, category, limit);
+    if (verifiedCatalogPlaces.length > 0) {
+      const validatedCatalog = verifiedCatalogPlaces.filter(p => this.validatePlaceForDestination(p, canonical, destination).valid);
+      const deduplicatedCatalog = this.deduplicatePlaces(validatedCatalog);
+
+      if (deduplicatedCatalog.length > 0) {
+        console.log(`[Places] Destination: ${destination} | Resolved: ${destCity}, ${destCountry} (${destLat}, ${destLng}) | Provider: verified_catalog | Results: ${deduplicatedCatalog.length} | Status: fallback`);
+        
+        // Cache verified catalog hit with status 'fallback'
+        placesCache.set(cacheKey, deduplicatedCatalog, 'verified_catalog', destination, category, query, params.locale);
+
+        return {
+          success: true,
+          destination,
+          query,
+          category,
+          source: 'verified_catalog',
+          dataStatus: 'fallback',
+          fetchedAt: new Date().toISOString(),
+          totalCount: deduplicatedCatalog.length,
+          canonicalLocation: canonical || undefined,
+          locationContext,
+          places: deduplicatedCatalog.slice(0, limit)
+        };
+      }
+    }
+
+    // 6. Tertiary Fallback: Demo Catalog if enabled
     if (this.isFallbackEnabled) {
-      console.log(`[Places] Checking demo data fallback for destination "${destination}"`);
+      console.log(`[Places] Checking demo catalog fallback for destination "${destination}"`);
       const demoPlaces = demoPlacesService.searchPlaces(destination, category, query, limit);
-      const deduplicatedDemo = this.deduplicatePlaces(demoPlaces);
+      const validatedDemo = demoPlaces.filter(p => this.validatePlaceForDestination(p, canonical, destination).valid);
+      const deduplicatedDemo = this.deduplicatePlaces(validatedDemo);
 
       if (deduplicatedDemo.length > 0) {
-        // Cache demo response so identical queries hit cache with source 'demo'
+        console.log(`[Places] Destination: ${destination} | Provider: demo | Results: ${deduplicatedDemo.length} | Status: demo`);
         placesCache.set(cacheKey, deduplicatedDemo, 'demo', destination, category, query, params.locale);
 
         return {
@@ -173,13 +244,15 @@ export class PlacesService {
           dataStatus: 'demo',
           fetchedAt: new Date().toISOString(),
           totalCount: deduplicatedDemo.length,
+          canonicalLocation: canonical || undefined,
+          locationContext,
           places: deduplicatedDemo.slice(0, limit)
         };
       }
     }
 
-    // 4. Unavailable
-    console.log(`[Places] Google unavailable and no demo places match for "${destination}". Returning empty result.`);
+    // 7. Data Unavailable (Never return fake fabricated places!)
+    console.log(`[Places] No verified attractions found for "${destination}". Returning honest unavailable status.`);
     return {
       success: false,
       destination,
@@ -189,16 +262,41 @@ export class PlacesService {
       dataStatus: 'unavailable',
       fetchedAt: new Date().toISOString(),
       totalCount: 0,
+      canonicalLocation: canonical || undefined,
+      locationContext,
       places: [],
       error: {
         code: 'PLACES_UNAVAILABLE',
-        message: `Live place data is currently unavailable for "${destination}" and demo fallback contains no matches.`
+        message: `Verified tourist attraction data is currently unavailable for "${destination}".`
       }
     };
   }
 
   /**
-   * Search Hotels
+   * Search Tourist Attractions for destination
+   * Accepts either string or AttractionSearchParams
+   */
+  public async searchAttractions(
+    destinationOrParams: string | AttractionSearchParams,
+    limit: number = 15
+  ): Promise<PlacesResponse> {
+    if (typeof destinationOrParams === 'string') {
+      return this.searchPlaces({
+        destination: destinationOrParams,
+        category: 'tourist_attraction',
+        limit
+      });
+    }
+
+    return this.searchPlaces({
+      ...destinationOrParams,
+      category: destinationOrParams.category || 'tourist_attraction',
+      limit: destinationOrParams.limit || limit
+    });
+  }
+
+  /**
+   * Search Hotels for destination
    */
   public async searchHotels(destination: string, limit: number = 10): Promise<PlacesResponse> {
     return this.searchPlaces({
@@ -210,25 +308,19 @@ export class PlacesService {
   }
 
   /**
-   * Search Tourist Attractions
-   */
-  public async searchAttractions(destination: string, limit: number = 15): Promise<PlacesResponse> {
-    return this.searchPlaces({
-      destination,
-      category: 'tourist_attraction',
-      query: `top tourist attractions in ${destination}`,
-      limit
-    });
-  }
-
-  /**
    * Retrieve Place Details
    */
   public async getPlaceDetails(placeId: string): Promise<TraveliaPlace | null> {
+    // 1. Check verified catalog
+    const fromVerified = verifiedPlacesCatalog.getPlaceById(placeId);
+    if (fromVerified) return fromVerified;
+
+    // 2. Check demo catalog
     if (placeId.startsWith('demo-')) {
       return demoPlacesService.getPlaceById(placeId);
     }
 
+    // 3. Live Google
     if (this.isLiveEnabled && googlePlacesProvider.isConfigured()) {
       try {
         const place = await googlePlacesProvider.getPlaceDetails(placeId);
@@ -238,6 +330,7 @@ export class PlacesService {
       }
     }
 
+    // 4. Fallback demo
     if (this.isFallbackEnabled) {
       return demoPlacesService.getPlaceById(placeId);
     }
@@ -246,8 +339,7 @@ export class PlacesService {
   }
 
   /**
-   * Verify Place Identity (Halucination Protection for Gemini)
-   * Resolves whether a named place exists in real data.
+   * Verify Place Identity (Hallucination Protection for Gemini)
    */
   public async verifyPlace(placeName: string, destination: string): Promise<TraveliaPlace | null> {
     if (!placeName || !placeName.trim()) return null;
@@ -259,7 +351,6 @@ export class PlacesService {
     });
 
     if (res.places.length > 0) {
-      // Find place with close name match
       const pNameLower = placeName.toLowerCase().trim();
       const match = res.places.find(p => 
         p.name.toLowerCase().includes(pNameLower) || 
@@ -279,33 +370,139 @@ export class PlacesService {
   }
 
   /**
-   * Deduplicates a list of places based on:
-   * 1. Google Place ID
-   * 2. Normalized Name + Geographic Proximity (< 200m)
+   * Geographically validates an attraction candidate against the destination
    */
-  private deduplicatePlaces(places: TraveliaPlace[]): TraveliaPlace[] {
-    const seenIds = new Set<string>();
-    const deduplicated: TraveliaPlace[] = [];
+  public validatePlaceForDestination(
+    place: TraveliaPlace,
+    canonical?: CanonicalLocation | null,
+    destinationName?: string
+  ): { valid: boolean; reason?: string } {
+    // 1. Coordinate Validity
+    if (
+      typeof place.latitude !== 'number' ||
+      typeof place.longitude !== 'number' ||
+      isNaN(place.latitude) ||
+      isNaN(place.longitude) ||
+      place.latitude < -90 ||
+      place.latitude > 90 ||
+      place.longitude < -180 ||
+      place.longitude > 180 ||
+      (place.latitude === 0 && place.longitude === 0)
+    ) {
+      return { valid: false, reason: 'INVALID_COORDINATES' };
+    }
 
-    for (const place of places) {
-      if (seenIds.has(place.id)) {
-        continue;
-      }
-      seenIds.add(place.id);
+    // 2. Name check
+    if (!place.name || place.name.trim().length < 2) {
+      return { valid: false, reason: 'INVALID_NAME' };
+    }
 
-      // Check for coordinate / name near-duplicate
-      const isDuplicate = deduplicated.some(existing => {
-        const sameName = existing.name.toLowerCase().trim() === place.name.toLowerCase().trim();
-        const distKm = this.calculateDistanceKm(existing.latitude, existing.longitude, place.latitude, place.longitude);
-        return sameName || distKm < 0.2; // closer than 200 meters with same name
-      });
-
-      if (!isDuplicate) {
-        deduplicated.push(place);
+    // 3. Reject generic commercial / non-tourist businesses
+    const nonAttractionTypes = new Set([
+      'dentist', 'accounting', 'lawyer', 'car_repair', 'gas_station', 
+      'insurance_agency', 'plumber', 'roofing_contractor', 'atm',
+      'bank', 'pharmacy', 'laundry', 'car_dealer', 'storage'
+    ]);
+    if (place.types && place.types.length > 0) {
+      const hasOnlyBadTypes = place.types.every(t => nonAttractionTypes.has(t.toLowerCase()));
+      if (hasOnlyBadTypes) {
+        return { valid: false, reason: 'NOT_AN_ATTRACTION' };
       }
     }
 
+    // 4. Country Bounding Box Validation
+    const cCode = canonical?.countryCode?.toUpperCase() || place.countryCode?.toUpperCase();
+    if (cCode && COUNTRY_BOUNDING_BOXES[cCode]) {
+      const box = COUNTRY_BOUNDING_BOXES[cCode];
+      if (
+        place.latitude < box.minLat ||
+        place.latitude > box.maxLat ||
+        place.longitude < box.minLng ||
+        place.longitude > box.maxLng
+      ) {
+        return { valid: false, reason: `OUTSIDE_COUNTRY_BOUNDING_BOX (${cCode})` };
+      }
+    }
+
+    // 5. Address Country Consistency (Prevents returning Pakistan/Bangladesh for India)
+    if (place.address && cCode) {
+      const addrLower = place.address.toLowerCase();
+      if (cCode === 'IN') {
+        if (addrLower.includes('pakistan') || addrLower.includes('bangladesh') || addrLower.includes('nepal')) {
+          return { valid: false, reason: 'COUNTRY_MISMATCH' };
+        }
+      } else if (cCode === 'FR') {
+        if (addrLower.includes('germany') || addrLower.includes('spain') || addrLower.includes('united kingdom')) {
+          return { valid: false, reason: 'COUNTRY_MISMATCH' };
+        }
+      } else if (cCode === 'NO') {
+        if (addrLower.includes('sweden') || addrLower.includes('denmark') || addrLower.includes('finland')) {
+          return { valid: false, reason: 'COUNTRY_MISMATCH' };
+        }
+      }
+    }
+
+    // 6. City radius check (if entityType is city)
+    if (canonical && (canonical.entityType === 'city' || !canonical.entityType)) {
+      const distKm = this.calculateDistanceKm(
+        canonical.latitude,
+        canonical.longitude,
+        place.latitude,
+        place.longitude
+      );
+      if (distKm > 85) {
+        return { valid: false, reason: `EXCEEDS_CITY_RADIUS (${Math.round(distKm)}km > 85km)` };
+      }
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Deduplicates a list of places based on providerPlaceId, id, and normalized name
+   */
+  public deduplicatePlaces(places: TraveliaPlace[]): TraveliaPlace[] {
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const deduplicated: TraveliaPlace[] = [];
+
+    for (const place of places) {
+      const idKey = (place.providerPlaceId || place.providerId || place.id || '').trim().toLowerCase();
+      const nameKey = place.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      if (idKey && seenIds.has(idKey)) continue;
+      if (nameKey && seenNames.has(nameKey)) continue;
+
+      if (idKey) seenIds.add(idKey);
+      if (nameKey) seenNames.add(nameKey);
+      deduplicated.push(place);
+    }
+
     return deduplicated;
+  }
+
+  /**
+   * Sorts attractions deterministically based on rating, reviews count, and distance
+   */
+  private sortAttractions(places: TraveliaPlace[], centerLat?: number, centerLng?: number): TraveliaPlace[] {
+    return [...places].sort((a, b) => {
+      const aRating = a.rating || 4.0;
+      const bRating = b.rating || 4.0;
+      const aReviews = a.userRatingsTotal || 100;
+      const bReviews = b.userRatingsTotal || 100;
+
+      const aScore = aRating * Math.log10(aReviews + 10);
+      const bScore = bRating * Math.log10(bReviews + 10);
+
+      let aDistPenalty = 0;
+      let bDistPenalty = 0;
+      if (centerLat !== undefined && centerLng !== undefined) {
+        aDistPenalty = this.calculateDistanceKm(centerLat, centerLng, a.latitude, a.longitude) * 0.05;
+        bDistPenalty = this.calculateDistanceKm(centerLat, centerLng, b.latitude, b.longitude) * 0.05;
+      }
+
+      return (bScore - bDistPenalty) - (aScore - aDistPenalty);
+    });
   }
 
   private calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {

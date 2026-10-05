@@ -109,8 +109,38 @@ router.get('/attractions', async (req: Request, res: Response) => {
       });
     }
 
+    const city = req.query.city as string | undefined;
+    const country = req.query.country as string | undefined;
+    const countryCode = req.query.countryCode as string | undefined;
+    const destinationPlaceId = req.query.destinationPlaceId as string | undefined;
+    const category = req.query.category as PlaceCategory | undefined;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 15;
-    const response = await placesService.searchAttractions(destination, limit);
+
+    let latitude = req.query.latitude ? parseFloat(req.query.latitude as string) : undefined;
+    let longitude = req.query.longitude ? parseFloat(req.query.longitude as string) : undefined;
+
+    if (req.query.latitude !== undefined || req.query.longitude !== undefined) {
+      const coordCheck = isValidCoordinate(req.query.latitude, req.query.longitude);
+      if (!coordCheck.valid) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_COORDINATES', message: coordCheck.error }
+        });
+      }
+    }
+
+    const response = await placesService.searchAttractions({
+      destination,
+      city,
+      country,
+      countryCode,
+      destinationPlaceId,
+      category,
+      limit,
+      latitude,
+      longitude
+    }, limit);
+
     return res.json(response);
   } catch (err: any) {
     console.error('[API /api/places/attractions Error]', err);

@@ -460,10 +460,16 @@ export const CITY_CENTERS: Record<string, Coordinates> = {
   singapore: { latitude: 1.3521, longitude: 103.8198 },
   dubai: { latitude: 25.2048, longitude: 55.2708 },
   bangkok: { latitude: 13.7563, longitude: 100.5018 },
-  seoul: { latitude: 37.5665, longitude: 126.9780 }
+  seoul: { latitude: 37.5665, longitude: 126.9780 },
+  norway: { latitude: 59.9139, longitude: 10.7522 },
+  oslo: { latitude: 59.9139, longitude: 10.7522 },
+  bergen: { latitude: 60.3913, longitude: 5.3221 }
 };
 
 export const VERIFIED_DESTINATION_CENTROIDS = CITY_CENTERS;
+
+export { resolveCanonicalLocation } from './canonicalLocationService';
+export type { CanonicalLocation } from '../types/location';
 
 /**
  * Resolves an activity or place name to factual geographic coordinates.
