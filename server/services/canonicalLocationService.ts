@@ -39,7 +39,8 @@ export const CANONICAL_LOCATIONS: Record<string, CanonicalLocation> = {
     longitude: 77.2090,
     timezone: 'Asia/Kolkata',
     source: 'catalog',
-    status: 'verified'
+    status: 'verified',
+    entityType: 'city'
   },
   chennai: {
     id: 'loc-in-chennai',
@@ -52,7 +53,8 @@ export const CANONICAL_LOCATIONS: Record<string, CanonicalLocation> = {
     longitude: 80.2707,
     timezone: 'Asia/Kolkata',
     source: 'catalog',
-    status: 'verified'
+    status: 'verified',
+    entityType: 'city'
   },
   mumbai: {
     id: 'loc-in-mumbai',
@@ -65,7 +67,8 @@ export const CANONICAL_LOCATIONS: Record<string, CanonicalLocation> = {
     longitude: 72.8777,
     timezone: 'Asia/Kolkata',
     source: 'catalog',
-    status: 'verified'
+    status: 'verified',
+    entityType: 'city'
   },
   bengaluru: {
     id: 'loc-in-bengaluru',
@@ -78,7 +81,8 @@ export const CANONICAL_LOCATIONS: Record<string, CanonicalLocation> = {
     longitude: 77.5946,
     timezone: 'Asia/Kolkata',
     source: 'catalog',
-    status: 'verified'
+    status: 'verified',
+    entityType: 'city'
   },
   goa: {
     id: 'loc-in-goa',
@@ -91,7 +95,8 @@ export const CANONICAL_LOCATIONS: Record<string, CanonicalLocation> = {
     longitude: 73.8311,
     timezone: 'Asia/Kolkata',
     source: 'catalog',
-    status: 'verified'
+    status: 'verified',
+    entityType: 'region'
   },
   hyderabad: {
     id: 'loc-in-hyderabad',

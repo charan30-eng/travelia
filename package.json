@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx server/test_deterministic_engine.ts && tsx server/test_route_intelligence.ts && tsx server/test_weather_intelligence.ts && tsx server/test_places_data_layer.ts && tsx server/test_trip_persistence.ts && tsx server/test_phase5_services.ts && tsx server/test_phase6_copilot.ts && tsx server/test_phase7_multi_objective.ts && tsx server/test_phase8_health_personalization.ts && tsx server/test_phase9_reliability.ts && tsx server/test_phase11_location_flights.ts"
+    "test": "tsx server/test_deterministic_engine.ts && tsx server/test_route_intelligence.ts && tsx server/test_weather_intelligence.ts && tsx server/test_places_data_layer.ts && tsx server/test_trip_persistence.ts && tsx server/test_phase5_services.ts && tsx server/test_phase6_copilot.ts && tsx server/test_phase7_multi_objective.ts && tsx server/test_phase8_health_personalization.ts && tsx server/test_phase9_reliability.ts && tsx server/test_phase11_location_flights.ts && tsx server/test_real_tourist_attractions.ts"
 
   },
 

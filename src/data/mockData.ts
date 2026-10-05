@@ -969,50 +969,7 @@ export const generateTripFromPrompt = (
         selected: false
       }
     ],
-    touristPlaces: [
-      {
-        id: `p-${Date.now()}-1`,
-        name: `${destination} Landmark Vista`,
-        location: destination,
-        rating: 4.9,
-        estimatedDuration: '2.5 Hours',
-        entryCost: 350,
-        image: heroImage,
-        aiTag: 'Top Iconic Sights',
-        category: 'Landmark',
-        description: `The premier must-see attraction that defines the spirit of ${destination}.`,
-        bestTimeToVisit: 'Morning / Golden Hour',
-        added: true
-      },
-      {
-        id: `p-${Date.now()}-2`,
-        name: `Historic Cultural Pavilion`,
-        location: `Old District, ${destination}`,
-        rating: 4.7,
-        estimatedDuration: '2 Hours',
-        entryCost: 200,
-        image: 'https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=600&auto=format&fit=crop',
-        aiTag: 'Art & Heritage',
-        category: 'Culture',
-        description: `Preserved historic architecture exhibiting centuries of local art and craftsmanship.`,
-        bestTimeToVisit: '10:00 AM – 2:00 PM',
-        added: true
-      },
-      {
-        id: `p-${Date.now()}-3`,
-        name: `Emerald Botanical Gardens`,
-        location: `North ${destination}`,
-        rating: 4.8,
-        estimatedDuration: '1.5 Hours',
-        entryCost: 150,
-        image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=600&auto=format&fit=crop',
-        aiTag: 'Nature & Serenity',
-        category: 'Nature',
-        description: `Peaceful walking trails with exotic flora, tranquil water ponds, and canopy walks.`,
-        bestTimeToVisit: '4:00 PM – Sunset',
-        added: true
-      }
-    ],
+    touristPlaces: [],
     restaurants: [
       {
         id: `r-${Date.now()}-1`,

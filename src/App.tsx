@@ -245,7 +245,7 @@ export default function App() {
       try {
         const [hotelsRes, attractionsRes] = await Promise.all([
           hotelClient.searchHotels(cleanDest, { nights: generated.nights, limit: 4 }),
-          placesClient.searchAttractions(cleanDest, 6)
+          placesClient.searchAttractions(destination.trim(), 6)
         ]);
 
         if (hotelsRes && hotelsRes.hotels && hotelsRes.hotels.length > 0) {
@@ -266,14 +266,16 @@ export default function App() {
           }));
         }
 
-
         if (attractionsRes && attractionsRes.places.length > 0) {
           generated.touristPlaces = attractionsRes.places.map((p, idx) => 
             placesClient.placeToTouristPlace(p, idx)
           );
+        } else {
+          generated.touristPlaces = [];
         }
       } catch (placesErr) {
         console.warn('[App] Places Data Layer fetch fallback:', placesErr);
+        generated.touristPlaces = [];
       }
 
       setCurrentTrip(generated);

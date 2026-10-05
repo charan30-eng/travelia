@@ -38,9 +38,9 @@ export interface ItineraryDay {
   formattedDate?: string;
 }
 
-export type PlaceSource = 'google' | 'demo' | 'mixed' | 'unavailable';
+export type PlaceSource = 'google' | 'demo' | 'mixed' | 'unavailable' | 'verified_catalog' | 'fallback';
 
-export type PlaceDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable';
+export type PlaceDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable' | 'fallback';
 
 export type ServiceLifecycleStatus = 'loading' | 'success' | 'partial' | 'cached' | 'unavailable' | 'error';
 
@@ -77,12 +77,16 @@ export interface TraveliaPlace {
   source: PlaceSource;
   sourceId?: string;
   providerId?: string; // alias for backwards compatibility
+  providerPlaceId?: string;
   name: string;
   category: PlaceCategory;
   types?: string[];
   latitude: number;
   longitude: number;
   address?: string;
+  city?: string;
+  country?: string;
+  countryCode?: string;
   rating?: number;
   userRatingsTotal?: number;
   openingHours?: PlaceOpeningHours;
@@ -95,6 +99,8 @@ export interface TraveliaPlace {
   fetchedAt?: string; // alias for backwards compatibility
   estimatedCost?: number | null;
   estimatedDuration?: string;
+  durationSource?: string;
+  priceSource?: string;
   description?: string;
   tag?: string;
   amenities?: string[];

@@ -8,7 +8,7 @@
  * If pricing is unavailable, price is strictly null. Never fabricate room tariffs.
  */
 
-export type HotelDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable';
+export type HotelDataStatus = 'live' | 'cached' | 'demo' | 'partial' | 'unavailable' | 'fallback';
 
 
 export type HotelAvailability = 'available' | 'few_rooms_left' | 'sold_out' | 'unavailable';

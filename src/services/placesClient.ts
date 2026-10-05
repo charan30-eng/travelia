@@ -83,9 +83,35 @@ class PlacesClient {
   /**
    * Search verified tourist attractions in destination
    */
-  public async searchAttractions(destination: string, limit: number = 9): Promise<PlacesResponse> {
+  public async searchAttractions(
+    destination: string,
+    options?: {
+      limit?: number;
+      category?: PlaceCategory;
+      city?: string;
+      country?: string;
+      latitude?: number;
+      longitude?: number;
+      destinationPlaceId?: string;
+    } | number
+  ): Promise<PlacesResponse> {
+    const limit = typeof options === 'number' ? options : options?.limit || 9;
+    const queryParams = new URLSearchParams({
+      destination,
+      limit: limit.toString()
+    });
+
+    if (typeof options === 'object') {
+      if (options.category) queryParams.append('category', options.category);
+      if (options.city) queryParams.append('city', options.city);
+      if (options.country) queryParams.append('country', options.country);
+      if (options.destinationPlaceId) queryParams.append('destinationPlaceId', options.destinationPlaceId);
+      if (options.latitude !== undefined) queryParams.append('latitude', options.latitude.toString());
+      if (options.longitude !== undefined) queryParams.append('longitude', options.longitude.toString());
+    }
+
     try {
-      const res = await fetch(`/api/places/attractions?destination=${encodeURIComponent(destination)}&limit=${limit}`);
+      const res = await fetch(`/api/places/attractions?${queryParams.toString()}`);
       if (!res.ok) {
         throw new Error(`Attractions search failed with status ${res.status}`);
       }
@@ -125,13 +151,8 @@ class PlacesClient {
    * Maps Google Places data faithfully without inventing fake nightly prices
    */
   public placeToHotel(place: TraveliaPlace, index: number = 0, nights: number = 4): Hotel {
-    // If real image proxy is available, use it; otherwise fallback to curated hotel visual
-    const image = place.photos?.[0]?.uri || 
-      (index % 3 === 0 
-        ? 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=600&auto=format&fit=crop'
-        : index % 3 === 1
-        ? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop'
-        : 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?q=80&w=600&auto=format&fit=crop');
+    // If real image proxy is available, use it; otherwise neutral architectural fallback
+    const image = place.photos?.[0]?.uri || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop';
 
     // Hotel Rule: Google Places priceLevel (0-4) represents a general price tier, NOT a nightly room tariff.
     // If an authoritative room price is unavailable, strictly set pricePerNight = null rather than fabricating a number.
@@ -145,7 +166,7 @@ class PlacesClient {
       ? 'Cached Live Stay'
       : dataStatus === 'partial'
       ? 'Partial Place'
-      : 'Curated Demo Stay';
+      : 'Curated Stay';
 
     return {
       id: place.id,
@@ -175,38 +196,39 @@ class PlacesClient {
 
   /**
    * Adapter: TraveliaPlace -> UI TouristPlace Model
+   * Strictly avoids fabricating fake prices, fake ratings, or assigning unrelated photos.
    */
   public placeToTouristPlace(place: TraveliaPlace, index: number = 0): TouristPlace {
-    const image = place.photos?.[0]?.uri || 
-      (index % 3 === 0 
-        ? 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=600&auto=format&fit=crop'
-        : index % 3 === 1
-        ? 'https://images.unsplash.com/photo-1590050752117-238cb0fb12b1?q=80&w=600&auto=format&fit=crop'
-        : 'https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=600&auto=format&fit=crop');
+    // Neutral fallback photo if provider photo is absent (avoids assigning unrelated Goa photos)
+    const neutralFallbackPhoto = 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=800&auto=format&fit=crop';
+    const image = place.photos?.[0]?.uri || neutralFallbackPhoto;
 
     const formattedCategory = (place.category || 'tourist_attraction').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-    const entryCost = place.priceLevel === 0 ? 0 : (place.estimatedCost ?? null);
-    const dataStatus = place.dataStatus || 'demo';
-    const aiTag = dataStatus === 'live'
-      ? 'Live Verified Sight'
-      : dataStatus === 'cached'
-      ? 'Cached Live Sight'
-      : dataStatus === 'partial'
-      ? 'Partial Sight'
-      : 'Demo Highlight';
+    // Factual pricing: 0 for verified free places, or authoritative price if provided. Never fabricate.
+    const entryCost = place.priceLevel === 0 ? 0 : (place.estimatedCost !== undefined && place.estimatedCost !== null ? place.estimatedCost : null);
+    const dataStatus = place.dataStatus || 'fallback';
+    const aiTag = place.tag || (
+      dataStatus === 'live'
+        ? 'Live Verified Sight'
+        : dataStatus === 'cached'
+        ? 'Cached Place'
+        : dataStatus === 'fallback'
+        ? 'Verified Place'
+        : 'Demo Highlight'
+    );
 
     return {
       id: place.id,
       name: place.name,
-      location: place.address || place.name,
+      location: place.address || place.city || place.name,
       rating: place.rating,
-      estimatedDuration: place.estimatedDuration || '2–3 Hours',
+      estimatedDuration: place.estimatedDuration || 'Typical visit duration unavailable',
       entryCost,
       image,
       aiTag,
       category: formattedCategory,
-      description: place.description || `${place.name} is a renowned ${formattedCategory.toLowerCase()} in ${place.address || 'the area'}.`,
+      description: place.description || `${place.name} is a renowned ${formattedCategory.toLowerCase()} in ${place.address || place.city || 'the area'}.`,
       bestTimeToVisit: place.bestTimeToVisit || 'Morning / Late Afternoon',
       added: true,
       source: place.source,

@@ -24,6 +24,7 @@ export const PlaceStatusBadge: React.FC<PlaceStatusBadgeProps> = ({
     status === 'error' ? 'error' :
     status === 'success' || status === 'live' ? 'live' :
     status === 'cached' ? 'cached' :
+    status === 'fallback' ? 'fallback' :
     status === 'partial' ? 'partial' :
     status === 'unavailable' ? 'unavailable' : 'demo';
 
@@ -35,16 +36,22 @@ export const PlaceStatusBadge: React.FC<PlaceStatusBadgeProps> = ({
       iconText: '◐'
     },
     live: {
-      label: source === 'google' ? 'Live Google' : status === 'success' ? 'Verified' : 'Live',
+      label: '✓ Verified Place',
       badgeClass: 'bg-emerald-950/85 text-emerald-200 border-emerald-400/30',
       dotClass: 'bg-emerald-400 animate-pulse',
-      iconText: '●'
+      iconText: '✓'
     },
     cached: {
-      label: 'Cached Fast',
+      label: 'Cached Place',
       badgeClass: 'bg-sky-950/85 text-sky-200 border-sky-400/30',
       dotClass: 'bg-sky-400',
       iconText: '⚡'
+    },
+    fallback: {
+      label: '✓ Verified Place',
+      badgeClass: 'bg-teal-950/85 text-teal-200 border-teal-400/30',
+      dotClass: 'bg-teal-400',
+      iconText: '✓'
     },
     demo: {
       label: 'Demo Place',
@@ -59,7 +66,7 @@ export const PlaceStatusBadge: React.FC<PlaceStatusBadgeProps> = ({
       iconText: '▲'
     },
     unavailable: {
-      label: 'Unavailable',
+      label: 'Data unavailable',
       badgeClass: 'bg-neutral-900/85 text-neutral-300 border-neutral-600/30',
       dotClass: 'bg-neutral-500',
       iconText: '○'

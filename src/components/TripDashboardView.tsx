@@ -1394,10 +1394,12 @@ END:VCALENDAR`;
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <span className="text-xs font-bold text-[#344E27] uppercase tracking-wider">
-              Must-Visit Sights
+              {trip.destination ? (trip.destination.toLowerCase().includes('norway') ? 'Across Norway' : trip.destination) : 'Must-Visit Sights'}
             </span>
             <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-[#191919] mt-0.5">
-              Top Tourist Attractions
+              {trip.destination && trip.destination.toLowerCase().includes('norway') 
+                ? 'Top Attractions Across Norway' 
+                : 'Top Tourist Attractions'}
             </h2>
           </div>
 
@@ -1440,7 +1442,7 @@ END:VCALENDAR`;
                 </div>
                 <div className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full text-[11px] font-bold text-white flex items-center gap-1">
                   <Star className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
-                  <span>{place.rating}</span>
+                  <span>{place.rating !== undefined && place.rating !== null ? place.rating : 'Rating unavailable'}</span>
                 </div>
               </div>
 
@@ -1460,7 +1462,7 @@ END:VCALENDAR`;
                   </div>
 
                   <p className="text-xs text-neutral-500 mt-0.5">
-                    {place.location} • {place.estimatedDuration}
+                    {place.location} • {place.estimatedDuration || 'Typical visit duration unavailable'}
                   </p>
                   <p className="text-xs text-neutral-600 mt-1.5 line-clamp-2">
                     {place.description}
@@ -1469,7 +1471,7 @@ END:VCALENDAR`;
 
                 <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between">
                   <span className="text-xs font-bold text-[#191919]">
-                    {place.entryCost === 0 ? 'Free Entry' : formatCurrency(place.entryCost, currency)}
+                    {place.entryCost === 0 ? 'Free Entry' : place.entryCost != null ? formatCurrency(place.entryCost, currency) : 'Check official website'}
                   </span>
 
                   <button

@@ -1011,41 +1011,49 @@ export class VerifiedPlacesCatalog {
     limit: number = 10
   ): TraveliaPlace[] {
     const destLower = (destination || '').toLowerCase().trim();
+    const cleanDest = destLower.split(',')[0].trim();
     const canCity = canonical?.city?.toLowerCase() || '';
     const canCountry = canonical?.country?.toLowerCase() || '';
     const canCode = canonical?.countryCode?.toUpperCase() || '';
     const isCountryLevel = canonical?.entityType === 'country' || destLower === 'norway' || destLower === 'india';
 
     const matches = VERIFIED_REAL_ATTRACTIONS.filter(place => {
-      // 1. If country level destination (e.g. Norway, India)
-      if (isCountryLevel && canCode) {
-        if (place.countryCode?.toUpperCase() === canCode) return true;
-        if (canCountry && place.country?.toLowerCase() === canCountry) return true;
-      }
-
-      // 2. City level matching
-      const placeCity = (place.city || '').toLowerCase();
-      const placeCountry = (place.country || '').toLowerCase();
+      const placeCity = (place.city || '').toLowerCase().trim();
+      const placeCountry = (place.country || '').toLowerCase().trim();
+      const placeCountryCode = (place.countryCode || '').toUpperCase().trim();
       const placeAddress = (place.address || '').toLowerCase();
 
-      const matchesCity = 
+      // 1. If country level destination (e.g. Norway, India)
+      if (isCountryLevel) {
+        if (canCode && placeCountryCode === canCode) return true;
+        if (canCountry && placeCountry === canCountry) return true;
+        if (destLower.includes(placeCountry) || placeCountry.includes(destLower)) return true;
+        return false;
+      }
+
+      // 2. City level matching (e.g. Delhi, Paris, Tokyo, Dubai, London, Mumbai)
+      const cityMatches = 
+        (canCity && placeCity === canCity) ||
         (canCity && placeCity.includes(canCity)) ||
-        (canCity && destLower.includes(canCity)) ||
-        destLower.includes(placeCity) ||
-        placeCity.includes(destLower.split(',')[0].trim());
+        placeCity === cleanDest ||
+        (cleanDest.length > 2 && placeCity.includes(cleanDest)) ||
+        (placeCity.length > 2 && cleanDest.includes(placeCity));
 
-      const matchesAddress = placeAddress.includes(destLower);
-      const matchesCountry = (canCode && place.countryCode === canCode) || (canCountry && placeCountry === canCountry);
+      if (cityMatches) {
+        // Enforce country consistency if country is known
+        if (canCode && placeCountryCode && placeCountryCode !== canCode) {
+          return false;
+        }
+        return true;
+      }
 
-      if (matchesCity) return true;
-      if (matchesAddress) return true;
-      if (destLower.includes('delhi') && placeCity === 'delhi') return true;
-      if (destLower.includes('mumbai') && placeCity === 'mumbai') return true;
-      if (destLower.includes('paris') && placeCity === 'paris') return true;
-      if (destLower.includes('london') && placeCity === 'london') return true;
-      if (destLower.includes('tokyo') && placeCity === 'tokyo') return true;
-      if (destLower.includes('dubai') && placeCity === 'dubai') return true;
-      if (destLower.includes('norway') && placeCountry === 'norway') return true;
+      // Address match as fallback
+      if (placeAddress.includes(cleanDest) || (canCity && placeAddress.includes(canCity))) {
+        if (canCode && placeCountryCode && placeCountryCode !== canCode) {
+          return false;
+        }
+        return true;
+      }
 
       return false;
     });
