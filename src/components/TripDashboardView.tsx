@@ -1095,11 +1095,11 @@ END:VCALENDAR`;
               {/* Activity Category Filters */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-2">
                 {[
-                  { id: 'all', label: 'All Activities' },
-                  { id: 'sightseeing', label: 'Sightseeing' },
-                  { id: 'food', label: 'Dining' },
-                  { id: 'relaxation', label: 'Relaxation' },
-                  { id: 'adventure', label: 'Adventure' },
+                  { id: 'all', label: `All Activities (${dayTotalCount})` },
+                  { id: 'sightseeing', label: `Sightseeing (${currentDayData?.activities.filter(a => a.category?.toLowerCase() === 'sightseeing').length || 0})` },
+                  { id: 'food', label: `Dining (${currentDayData?.activities.filter(a => a.category?.toLowerCase() === 'food').length || 0})` },
+                  { id: 'relaxation', label: `Relaxation (${currentDayData?.activities.filter(a => a.category?.toLowerCase() === 'relaxation').length || 0})` },
+                  { id: 'adventure', label: `Adventure (${currentDayData?.activities.filter(a => a.category?.toLowerCase() === 'adventure').length || 0})` },
                 ].map(cat => (
                   <button
                     key={cat.id}
@@ -1278,19 +1278,29 @@ END:VCALENDAR`;
 
           {/* Hotel Filter Buttons */}
           <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-full self-start sm:self-auto">
-            {['all', 'luxury', 'mid', 'budget'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setHotelFilter(cat)}
-                className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer ${
-                  hotelFilter === cat
-                    ? 'bg-[#344E27] text-white shadow-2xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-              >
-                {cat === 'all' ? 'All Stays' : cat}
-              </button>
-            ))}
+            {['all', 'luxury', 'mid', 'budget'].map(cat => {
+              const count = cat === 'all' 
+                ? trip.hotels.length 
+                : trip.hotels.filter(h => h.category?.toLowerCase() === cat.toLowerCase()).length;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setHotelFilter(cat)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    hotelFilter === cat
+                      ? 'bg-[#344E27] text-white shadow-2xs'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  <span>{cat === 'all' ? 'All Stays' : cat}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    hotelFilter === cat ? 'bg-white/20 text-white' : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1405,19 +1415,29 @@ END:VCALENDAR`;
 
           {/* Place Category Filter */}
           <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-full self-start sm:self-auto">
-            {['all', 'Beach', 'Heritage', 'Nature', 'Market'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setPlaceFilter(cat)}
-                className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer ${
-                  placeFilter === cat
-                    ? 'bg-[#344E27] text-white shadow-2xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
-                }`}
-              >
-                {cat === 'all' ? 'All Sights' : cat}
-              </button>
-            ))}
+            {['all', 'Beach', 'Heritage', 'Nature', 'Market'].map(cat => {
+              const count = cat === 'all'
+                ? trip.touristPlaces.length
+                : trip.touristPlaces.filter(p => p.category?.toLowerCase() === cat.toLowerCase()).length;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setPlaceFilter(cat)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold capitalize transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    placeFilter === cat
+                      ? 'bg-[#344E27] text-white shadow-2xs'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  <span>{cat === 'all' ? 'All Sights' : cat}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    placeFilter === cat ? 'bg-white/20 text-white' : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

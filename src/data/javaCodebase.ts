@@ -310,10 +310,10 @@ public class HomeView extends ScrollPane {
         statsBar.setStyle(Theme.CARD_STYLE);
 
         statsBar.getChildren().addAll(
-            createStatItem("10K+", "Trips Planned"),
-            createStatItem("500+", "Destinations"),
+            createStatItem("6+", "Trips Planned"),
+            createStatItem("8", "Destinations"),
             createStatItem("4.9/5", "Traveler Rating"),
-            createStatItem("₹2.4 Cr", "Budget Saved")
+            createStatItem("₹16,500", "Budget Saved")
         );
 
         root.getChildren().addAll(hero, statsBar);

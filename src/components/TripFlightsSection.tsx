@@ -65,18 +65,19 @@ export const TripFlightsSection: React.FC<TripFlightsSectionProps> = ({
 
   const [outboundFlight, setOutboundFlight] = useState<FlightSegment>(() => getFlightDataForDestination(trip.destination, trip.origin).outboundFlight);
   const [returnFlight, setReturnFlight] = useState<FlightSegment>(() => getFlightDataForDestination(trip.destination, trip.origin).returnFlight);
-  const [selectedOrigin, setSelectedOrigin] = useState<string>(() => destinationData.outboundFlight?.originCode || trip.originAirport?.iata || 'DEL');
+  const [selectedOrigin, setSelectedOrigin] = useState<string>(() => trip.originAirport?.airportCode || destinationData.outboundFlight?.originCode || 'BOM');
+  const [serverAlternatives, setServerAlternatives] = useState<FlightOption[]>([]);
 
   // Sync state if destination changes
   React.useEffect(() => {
     setOutboundFlight(destinationData.outboundFlight);
     setReturnFlight(destinationData.returnFlight);
-    setSelectedOrigin(destinationData.outboundFlight?.originCode || trip.originAirport?.iata || 'DEL');
+    const initialOrigin = trip.originAirport?.airportCode || destinationData.outboundFlight?.originCode || 'BOM';
+    setSelectedOrigin(initialOrigin);
   }, [destinationData, trip.originAirport]);
 
   const [dataStatus, setDataStatus] = useState<'live' | 'cached' | 'demo' | 'unavailable'>('demo');
   const [dataSource, setDataSource] = useState<string>('catalog');
-
 
   // Query Backend Flight Service for Authoritative Flights
   React.useEffect(() => {
@@ -99,6 +100,7 @@ export const TripFlightsSection: React.FC<TripFlightsSectionProps> = ({
           setDataStatus(res.dataStatus);
           setDataSource(res.source);
         }
+
         if (res.outboundFlights && res.outboundFlights.length > 0) {
           const firstOut = res.outboundFlights[0];
           setOutboundFlight({
@@ -126,14 +128,60 @@ export const TripFlightsSection: React.FC<TripFlightsSectionProps> = ({
             gate: 'Gate 42B',
             baggage: {
               cabin: '7 kg included',
-              checkIn: '15 kg per traveler'
+              checkIn: firstOut.baggage?.checkIn || '15 kg per traveler'
             },
             pricePerPerson: firstOut.price.pricePerPerson,
             status: 'on-time',
             bookingRef: `TRV-${firstOut.airlineCode}88K`,
             carbonEmissionKg: firstOut.carbonEmissionKg || 78
           });
+
+          // Map all outbound and return flights into alternative options
+          const mappedOut: FlightOption[] = res.outboundFlights.map((f, idx) => ({
+            id: f.id,
+            type: 'outbound' as const,
+            airline: f.airline,
+            flightNumber: f.flightNumber,
+            originCode: f.originCode,
+            originCity: f.originCity,
+            destCode: f.destinationCode,
+            destCity: f.destinationCity,
+            departureTime: f.departureTime,
+            arrivalTime: f.arrivalTime,
+            duration: f.duration,
+            stops: f.stops,
+            pricePerPerson: f.price.pricePerPerson,
+            isBestValue: idx === 0,
+            isFastest: idx === 0,
+            carbonScore: 'eco' as const,
+            aircraft: f.aircraft,
+            availableSeats: f.availableSeats || 6
+          }));
+
+          const mappedRet: FlightOption[] = (res.returnFlights || []).map((f, idx) => ({
+            id: f.id,
+            type: 'return' as const,
+            airline: f.airline,
+            flightNumber: f.flightNumber,
+            originCode: f.originCode,
+            originCity: f.originCity,
+            destCode: f.destinationCode,
+            destCity: f.destinationCity,
+            departureTime: f.departureTime,
+            arrivalTime: f.arrivalTime,
+            duration: f.duration,
+            stops: f.stops,
+            pricePerPerson: f.price.pricePerPerson,
+            isBestValue: idx === 0,
+            isFastest: idx === 0,
+            carbonScore: 'eco' as const,
+            aircraft: f.aircraft,
+            availableSeats: f.availableSeats || 6
+          }));
+
+          setServerAlternatives([...mappedOut, ...mappedRet]);
         }
+
         if (res.returnFlights && res.returnFlights.length > 0) {
           const firstRet = res.returnFlights[0];
           setReturnFlight({
@@ -161,7 +209,7 @@ export const TripFlightsSection: React.FC<TripFlightsSectionProps> = ({
             gate: 'Gate 05',
             baggage: {
               cabin: '7 kg included',
-              checkIn: '20 kg included'
+              checkIn: firstRet.baggage?.checkIn || '20 kg included'
             },
             pricePerPerson: firstRet.price.pricePerPerson,
             status: 'scheduled',
@@ -177,24 +225,43 @@ export const TripFlightsSection: React.FC<TripFlightsSectionProps> = ({
     return () => { isCancelled = true; };
   }, [trip.destination, selectedOrigin, trip.startDate, trip.endDate, trip.travelers]);
 
-
-  // Available origin cities from flight routes
-  const availableOrigins = React.useMemo(() => {
-    const map = new Map<string, string>();
+  // Combined alternative flights: merges server-retrieved offers with verified catalog options
+  const allAlternatives = React.useMemo(() => {
+    const list = [...serverAlternatives];
     destinationData.alternativeFlights.forEach(opt => {
-      if (opt.type === 'outbound') {
-        map.set(opt.originCode, opt.originCity);
-      } else {
-        map.set(opt.destCode, opt.destCity);
+      if (!list.some(existing => existing.flightNumber === opt.flightNumber && existing.type === opt.type)) {
+        list.push(opt);
       }
     });
-    if (map.size === 0) {
-      map.set('BOM', 'Mumbai');
-      map.set('DEL', 'Delhi');
-      map.set('BLR', 'Bengaluru');
+    return list;
+  }, [serverAlternatives, destinationData.alternativeFlights]);
+
+  // Available origin cities from flight routes and primary transit hubs
+  const availableOrigins = React.useMemo(() => {
+    const map = new Map<string, string>();
+    
+    // Add current trip origin if available
+    if (trip.originAirport?.airportCode) {
+      map.set(trip.originAirport.airportCode, trip.originAirport.city);
     }
+
+    // Add primary hubs
+    map.set('BOM', 'Mumbai');
+    map.set('DEL', 'Delhi');
+    map.set('BLR', 'Bengaluru');
+    map.set('MAA', 'Chennai');
+    map.set('HYD', 'Hyderabad');
+    map.set('CCU', 'Kolkata');
+
+    // Add any origins from alternative flights
+    allAlternatives.forEach(opt => {
+      if (opt.type === 'outbound') {
+        map.set(opt.originCode, opt.originCity);
+      }
+    });
+
     return Array.from(map.entries()).map(([code, name]) => ({ code, name }));
-  }, [destinationData]);
+  }, [trip.originAirport, allAlternatives]);
 
   // In-app Flight Booking State
   const [isBookingModalOpen, setIsBookingModalOpen] = useState<boolean>(false);
@@ -338,15 +405,33 @@ Generated by Travelia AI
     notify('Flight e-tickets and travel briefing downloaded!');
   };
 
-  // Filtered alternative flights
-  const filteredAlternatives = destinationData.alternativeFlights.filter(opt => {
-    if (opt.type !== selectedLegType) return false;
-    if (selectedLegType === 'outbound' && opt.originCode !== selectedOrigin) return false;
-    if (selectedLegType === 'return' && opt.destCode !== selectedOrigin) return false;
-    if (flightClassFilter === 'eco' && opt.carbonScore !== 'eco') return false;
-    if (flightClassFilter === 'fastest' && !opt.isFastest) return false;
-    return true;
-  });
+  // Filtered alternative flights from combined pool (server + catalog)
+  const filteredAlternatives = React.useMemo(() => {
+    const matched = allAlternatives.filter(opt => {
+      if (opt.type !== selectedLegType) return false;
+      if (selectedLegType === 'outbound' && selectedOrigin && opt.originCode !== selectedOrigin) return false;
+      if (selectedLegType === 'return' && selectedOrigin && opt.destCode !== selectedOrigin) return false;
+      if (flightClassFilter === 'eco' && opt.carbonScore !== 'eco') return false;
+      if (flightClassFilter === 'fastest' && !opt.isFastest) return false;
+      return true;
+    });
+
+    // If strict origin filter returns empty but alternatives exist for this leg type,
+    // relax origin filter so user still sees viable options
+    if (matched.length === 0) {
+      const legMatched = allAlternatives.filter(opt => {
+        if (opt.type !== selectedLegType) return false;
+        if (flightClassFilter === 'eco' && opt.carbonScore !== 'eco') return false;
+        if (flightClassFilter === 'fastest' && !opt.isFastest) return false;
+        return true;
+      });
+      if (legMatched.length > 0) {
+        return legMatched;
+      }
+    }
+
+    return matched;
+  }, [allAlternatives, selectedLegType, selectedOrigin, flightClassFilter]);
 
   return (
     <section id="section-flights" className="space-y-6">
@@ -521,7 +606,7 @@ Generated by Travelia AI
               {returnFlight.originCode} ➔ {returnFlight.destinationCode} • {returnFlight.airline}
             </span>
             <span className="text-[10px] text-neutral-500 font-semibold block mt-0.5">
-              Nov 16 • {returnFlight.departureTime}
+              {returnFlight.departureDate || trip.endDate || 'Return'} • {returnFlight.departureTime}
             </span>
           </div>
         </div>

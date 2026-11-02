@@ -23,13 +23,21 @@ interface HomeViewProps {
   onStartPlanning: (dest?: string) => void;
   onExplore: () => void;
   currency: Currency;
+  savedTripsCount?: number;
+  totalBudgetSaved?: number;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
   onStartPlanning,
   onExplore,
   currency,
+  savedTripsCount = 6,
+  totalBudgetSaved = 16500,
 }) => {
+  const avgRating = (
+    FEATURED_DESTINATIONS.reduce((acc, d) => acc + d.rating, 0) / FEATURED_DESTINATIONS.length
+  ).toFixed(1);
+  const displayTripsCount = savedTripsCount && savedTripsCount > 0 ? savedTripsCount : 6;
   // Feature cards matching the exact 3-card layout at the bottom of the Lumora reference image!
   const referenceBottomCards = [
     {
@@ -188,40 +196,40 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* STATISTICS STRIP */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-8">
-        <div className="bg-white rounded-[28px] p-6 sm:p-8 border border-[#E5E7EB] shadow-2xs grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          <div>
-            <span className="font-display font-extrabold text-3xl sm:text-4xl text-[#191919] block tracking-tight">
-              10K+
+        <div className="bg-white rounded-[28px] p-6 sm:p-8 border border-[#E5E7EB] shadow-2xs grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 text-center">
+          <div className="min-w-0 px-1">
+            <span className="font-display font-extrabold text-2xl sm:text-3xl lg:text-4xl text-[#191919] block tracking-tight">
+              {displayTripsCount}+
             </span>
             <span className="text-xs sm:text-sm text-neutral-500 font-medium mt-1 block">
               Trips Planned
             </span>
           </div>
 
-          <div>
-            <span className="font-display font-extrabold text-3xl sm:text-4xl text-[#344E27] block tracking-tight">
-              500+
+          <div className="min-w-0 px-1">
+            <span className="font-display font-extrabold text-2xl sm:text-3xl lg:text-4xl text-[#344E27] block tracking-tight">
+              {FEATURED_DESTINATIONS.length}
             </span>
             <span className="text-xs sm:text-sm text-neutral-500 font-medium mt-1 block">
               Destinations
             </span>
           </div>
 
-          <div>
+          <div className="min-w-0 px-1">
             <div className="flex items-center justify-center gap-1">
-              <span className="font-display font-extrabold text-3xl sm:text-4xl text-[#191919] tracking-tight">
-                4.9/5
+              <span className="font-display font-extrabold text-2xl sm:text-3xl lg:text-4xl text-[#191919] tracking-tight">
+                {avgRating}/5
               </span>
-              <Star className="w-5 h-5 fill-[#F59E0B] text-[#F59E0B]" />
+              <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-[#F59E0B] text-[#F59E0B] shrink-0" />
             </div>
             <span className="text-xs sm:text-sm text-neutral-500 font-medium mt-1 block">
               Traveler Rating
             </span>
           </div>
 
-          <div>
-            <span className="font-display font-extrabold text-3xl sm:text-4xl text-[#191919] block tracking-tight">
-              {formatCurrency(24000000, currency)}
+          <div className="min-w-0 px-1">
+            <span className="font-display font-extrabold text-2xl sm:text-3xl lg:text-4xl text-[#191919] block tracking-tight">
+              {formatCurrency(totalBudgetSaved, currency)}
             </span>
             <span className="text-xs sm:text-sm text-neutral-500 font-medium mt-1 block">
               Estimated Budget Saved
@@ -394,9 +402,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
           <button
             onClick={onExplore}
-            className="text-xs sm:text-sm font-bold text-[#344E27] hover:underline flex items-center gap-1"
+            className="text-xs sm:text-sm font-bold text-[#344E27] hover:underline flex items-center gap-1 cursor-pointer"
           >
-            <span>View All (500+)</span>
+            <span>View All ({FEATURED_DESTINATIONS.length})</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

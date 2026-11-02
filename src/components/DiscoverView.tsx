@@ -161,19 +161,29 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         <div className="space-y-8">
           {/* Category Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  selectedCategory === cat
-                    ? 'bg-[#344E27] text-white shadow-sm'
-                    : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {CATEGORIES.map((cat) => {
+              const count = cat === 'All'
+                ? FEATURED_DESTINATIONS.length
+                : FEATURED_DESTINATIONS.filter(d => d.category.toLowerCase() === cat.toLowerCase()).length;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedCategory === cat
+                      ? 'bg-[#344E27] text-white shadow-sm'
+                      : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
+                  }`}
+                >
+                  <span>{cat}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    selectedCategory === cat ? 'bg-white/20 text-white' : 'bg-neutral-100 text-neutral-500'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Destination Grid */}

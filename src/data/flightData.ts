@@ -1376,10 +1376,13 @@ const DESTINATION_SPECS: Record<string, DestinationSpec> = {
  * Builds realistic, complete DestinationFlightPackage for any resolved destination specification
  */
 function buildPackageFromSpec(
-  spec: DestinationSpec,
+  inputSpec: DestinationSpec,
   originOverride?: Airport | null,
   isSameCityInput?: boolean
 ): DestinationFlightPackage {
+  // Deep clone spec to avoid mutating singleton constants
+  const spec: DestinationSpec = JSON.parse(JSON.stringify(inputSpec));
+
   // If user provided a specific origin, use that airport
   if (originOverride) {
     spec.originHub = {
@@ -1497,14 +1500,35 @@ function buildPackageFromSpec(
       aircraft: spec.outboundAircraft,
       availableSeats: 8
     },
-    // 2. Delhi Hub Outbound
+    // 2. Primary Hub Outbound Afternoon Option
     {
-      id: `alt-${spec.airportCode.toLowerCase()}-2`,
+      id: `alt-${spec.airportCode.toLowerCase()}-2-opt`,
+      type: 'outbound',
+      airline: spec.outboundAirline.includes('IndiGo') ? 'Air India' : 'IndiGo Airlines',
+      flightNumber: spec.outboundAirline.includes('IndiGo') ? 'AI-512' : '6E-442',
+      originCode: spec.originHub.code,
+      originCity: spec.originHub.city,
+      destCode: spec.airportCode,
+      destCity: spec.cityName,
+      departureTime: '11:45 AM',
+      arrivalTime: '05:30 PM',
+      duration: spec.flightDuration,
+      stops: 0,
+      pricePerPerson: Math.round(spec.outboundPrice * 0.94),
+      isBestValue: true,
+      isFastest: true,
+      carbonScore: 'eco',
+      aircraft: spec.outboundAircraft,
+      availableSeats: 5
+    },
+    // 3. Alternate Hub (Delhi/Mumbai/Bengaluru) Outbound
+    {
+      id: `alt-${spec.airportCode.toLowerCase()}-3-alt`,
       type: 'outbound',
       airline: spec.delhiAlt?.outAirline || 'Air India',
       flightNumber: spec.delhiAlt?.outFlight || 'AI-182',
-      originCode: 'DEL',
-      originCity: 'Delhi',
+      originCode: spec.originHub.code === 'DEL' ? 'BOM' : 'DEL',
+      originCity: spec.originHub.code === 'DEL' ? 'Mumbai' : 'Delhi',
       destCode: spec.airportCode,
       destCity: spec.cityName,
       departureTime: '10:15 AM',
@@ -1517,27 +1541,6 @@ function buildPackageFromSpec(
       carbonScore: 'eco',
       aircraft: 'Boeing 787-9',
       availableSeats: 6
-    },
-    // 3. Bengaluru Hub Outbound
-    {
-      id: `alt-${spec.airportCode.toLowerCase()}-3`,
-      type: 'outbound',
-      airline: spec.blrAlt?.outAirline || 'IndiGo',
-      flightNumber: spec.blrAlt?.outFlight || '6E-781',
-      originCode: 'BLR',
-      originCity: 'Bengaluru',
-      destCode: spec.airportCode,
-      destCity: spec.cityName,
-      departureTime: '11:45 PM',
-      arrivalTime: '07:15 AM',
-      duration: spec.flightDuration,
-      stops: 1,
-      pricePerPerson: spec.blrAlt?.outPrice || Math.round(spec.outboundPrice * 0.95),
-      isBestValue: true,
-      isFastest: false,
-      carbonScore: 'standard',
-      aircraft: 'A321neo',
-      availableSeats: 12
     },
     // 4. Primary Hub Return
     {
@@ -1560,16 +1563,37 @@ function buildPackageFromSpec(
       aircraft: spec.returnAircraft,
       availableSeats: 7
     },
-    // 5. Delhi Hub Return
+    // 5. Primary Hub Return Evening Option
     {
-      id: `alt-${spec.airportCode.toLowerCase()}-5`,
+      id: `alt-${spec.airportCode.toLowerCase()}-5-opt`,
+      type: 'return',
+      airline: spec.returnAirline.includes('Air India') ? 'IndiGo Airlines' : 'Air India',
+      flightNumber: spec.returnAirline.includes('Air India') ? '6E-854' : 'AI-855',
+      originCode: spec.airportCode,
+      originCity: spec.cityName,
+      destCode: spec.originHub.code,
+      destCity: spec.originHub.city,
+      departureTime: '08:30 PM',
+      arrivalTime: '02:45 AM',
+      duration: spec.returnDuration,
+      stops: 0,
+      pricePerPerson: Math.round(spec.returnPrice * 0.96),
+      isBestValue: true,
+      isFastest: true,
+      carbonScore: 'eco',
+      aircraft: spec.returnAircraft,
+      availableSeats: 4
+    },
+    // 6. Alternate Hub Return
+    {
+      id: `alt-${spec.airportCode.toLowerCase()}-6-alt`,
       type: 'return',
       airline: spec.delhiAlt?.retAirline || 'Air India',
       flightNumber: spec.delhiAlt?.retFlight || 'AI-183',
       originCode: spec.airportCode,
       originCity: spec.cityName,
-      destCode: 'DEL',
-      destCity: 'Delhi',
+      destCode: spec.originHub.code === 'DEL' ? 'BOM' : 'DEL',
+      destCity: spec.originHub.code === 'DEL' ? 'Mumbai' : 'Delhi',
       departureTime: '01:30 PM',
       arrivalTime: '07:50 PM',
       duration: spec.returnDuration,
@@ -1580,27 +1604,6 @@ function buildPackageFromSpec(
       carbonScore: 'eco',
       aircraft: 'Boeing 787-9',
       availableSeats: 5
-    },
-    // 6. Bengaluru Hub Return
-    {
-      id: `alt-${spec.airportCode.toLowerCase()}-6`,
-      type: 'return',
-      airline: spec.blrAlt?.retAirline || 'IndiGo',
-      flightNumber: spec.blrAlt?.retFlight || '6E-782',
-      originCode: spec.airportCode,
-      originCity: spec.cityName,
-      destCode: 'BLR',
-      destCity: 'Bengaluru',
-      departureTime: '08:45 PM',
-      arrivalTime: '03:15 AM',
-      duration: spec.returnDuration,
-      stops: 1,
-      pricePerPerson: spec.blrAlt?.retPrice || Math.round(spec.returnPrice * 0.95),
-      isBestValue: true,
-      isFastest: false,
-      carbonScore: 'standard',
-      aircraft: 'A321neo',
-      availableSeats: 9
     }
   ];
 

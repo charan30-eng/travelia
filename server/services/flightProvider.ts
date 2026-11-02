@@ -140,26 +140,159 @@ export class FlightProvider implements IFlightProvider {
     const cabin = params.cabinClass || 'economy';
     const cabinMultiplier = cabin === 'business' ? 2.3 : cabin === 'premium' ? 1.45 : 1.0;
 
-    // Route pricing benchmarks (INR)
-    let baseFare = 4500;
+    const indianAirports = new Set([
+      'DEL', 'BOM', 'BLR', 'MAA', 'HYD', 'CCU', 'GOX', 'GOI', 'COK', 'JAI', 'AMD',
+      'SXR', 'UDR', 'VNS', 'ATQ', 'IXL', 'IXZ', 'DED', 'IXC', 'PNQ', 'LKO', 'GAU',
+      'BBI', 'TRV', 'IXM', 'CJB', 'AGR'
+    ]);
+
+    const isDomestic = indianAirports.has(origin.code) && indianAirports.has(dest.code);
+    const isInternational = !isDomestic;
+
+    // Helper: compute arrival time from departure time and duration
+    const calcArrival = (depTime: string, durStr: string) => {
+      try {
+        const timeParts = depTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+        if (!timeParts) return '10:00 AM';
+        let hour = parseInt(timeParts[1], 10);
+        const min = parseInt(timeParts[2], 10);
+        const meridiem = timeParts[3].toUpperCase();
+        if (meridiem === 'PM' && hour !== 12) hour += 12;
+        if (meridiem === 'AM' && hour === 12) hour = 0;
+
+        const durH = parseInt((durStr.match(/(\d+)h/i) || [0, 2])[1] as string, 10);
+        const durM = parseInt((durStr.match(/(\d+)m/i) || [0, 0])[1] as string, 10);
+
+        let totalMin = hour * 60 + min + durH * 60 + durM;
+        totalMin %= (24 * 60);
+
+        let arrH = Math.floor(totalMin / 60);
+        const arrM = totalMin % 60;
+        const arrMer = arrH >= 12 ? 'PM' : 'AM';
+        if (arrH > 12) arrH -= 12;
+        if (arrH === 0) arrH = 12;
+
+        return `${String(arrH).padStart(2, '0')}:${String(arrM).padStart(2, '0')} ${arrMer}`;
+      } catch {
+        return '10:45 AM';
+      }
+    };
+
+    // Route pricing & corridor specs
+    let baseFare = 4850;
     let durationStr = '2h 15m';
-    let isInternational = false;
+    let carrier1 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-2041', aircraft: 'Airbus A320neo' };
+    let carrier2 = { airline: 'Akasa Air', code: 'QP', flight: 'QP-1342', aircraft: 'Boeing 737 MAX 8' };
+    let returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-854', aircraft: 'Airbus A321neo' };
+    let carbonOut = 78;
+    let baggageDesc = '15 kg per traveler';
 
     if (dest.code === 'GOX' || dest.code === 'GOI') {
       baseFare = 3850;
       durationStr = '1h 20m';
-    } else if (dest.code === 'HND' || dest.code === 'NRT' || dest.code === 'KIX') {
-      baseFare = 32000;
-      durationStr = '8h 45m';
-      isInternational = true;
-    } else if (dest.code === 'CDG' || dest.code === 'FCO' || dest.code === 'ZRH' || dest.code === 'LHR') {
-      baseFare = 42000;
-      durationStr = '9h 30m';
-      isInternational = true;
-    } else if (dest.code === 'DPS') {
-      baseFare = 24000;
-      durationStr = '7h 15m';
-      isInternational = true;
+      carrier1 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-2041', aircraft: 'Airbus A320neo' };
+      carrier2 = { airline: 'Akasa Air', code: 'QP', flight: 'QP-1342', aircraft: 'Boeing 737 MAX 8' };
+      returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-854', aircraft: 'Airbus A321neo' };
+      carbonOut = 78;
+    } else if (['SXR', 'UDR', 'JAI', 'DED', 'IXC', 'PNQ', 'IXL'].includes(dest.code)) {
+      baseFare = 4450;
+      durationStr = '1h 35m';
+      carrier1 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-618', aircraft: 'Airbus A320neo' };
+      carrier2 = { airline: 'Air India', code: 'AI', flight: 'AI-441', aircraft: 'Airbus A320neo' };
+      returnCarrier = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-619', aircraft: 'Airbus A320neo' };
+      carbonOut = 85;
+    } else if (isDomestic) {
+      baseFare = 4850;
+      durationStr = '2h 15m';
+      carrier1 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-5002', aircraft: 'Airbus A321neo' };
+      carrier2 = { airline: 'Air India', code: 'AI', flight: 'AI-804', aircraft: 'Airbus A320neo' };
+      returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-805', aircraft: 'Airbus A320neo' };
+      carbonOut = 110;
+    } else if (['DXB', 'DOH', 'AUH'].includes(dest.code)) {
+      baseFare = 14500;
+      durationStr = '3h 40m';
+      carrier1 = { airline: 'Emirates', code: 'EK', flight: 'EK-501', aircraft: 'Boeing 777-300ER' };
+      carrier2 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-1451', aircraft: 'Airbus A321neo' };
+      returnCarrier = { airline: 'Emirates', code: 'EK', flight: 'EK-502', aircraft: 'Boeing 777-300ER' };
+      carbonOut = 180;
+      baggageDesc = '25 kg included';
+    } else if (['SIN', 'BKK', 'HKT', 'KUL', 'DPS'].includes(dest.code)) {
+      baseFare = dest.code === 'DPS' ? 22500 : 15800;
+      durationStr = dest.code === 'DPS' ? '6h 45m' : '4h 15m';
+      carrier1 = dest.code === 'SIN' 
+        ? { airline: 'Singapore Airlines', code: 'SQ', flight: 'SQ-421', aircraft: 'Airbus A350-900' }
+        : dest.code === 'DPS' 
+        ? { airline: 'Garuda Indonesia', code: 'GA', flight: 'GA-842', aircraft: 'Airbus A330-300' }
+        : { airline: 'Thai Airways', code: 'TG', flight: 'TG-318', aircraft: 'Airbus A350-900' };
+      carrier2 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-1052', aircraft: 'Airbus A321neo' };
+      returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-381', aircraft: 'Airbus A321neo' };
+      carbonOut = 240;
+      baggageDesc = '25 kg included';
+    } else if (['HND', 'NRT', 'KIX', 'ICN'].includes(dest.code)) {
+      baseFare = 33500;
+      durationStr = '8h 15m';
+      carrier1 = dest.code === 'ICN' 
+        ? { airline: 'Korean Air', code: 'KE', flight: 'KE-656', aircraft: 'Boeing 787-9 Dreamliner' }
+        : { airline: 'Japan Airlines', code: 'JL', flight: 'JL-750', aircraft: 'Boeing 787-8 Dreamliner' };
+      carrier2 = { airline: 'Air India', code: 'AI', flight: 'AI-306', aircraft: 'Boeing 787-8 Dreamliner' };
+      returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-307', aircraft: 'Boeing 787-8 Dreamliner' };
+      carbonOut = 320;
+      baggageDesc = '23 kg included';
+    } else if (['CDG', 'LHR', 'FCO', 'ZRH', 'AMS', 'FRA', 'MUC', 'BCN', 'MAD', 'VIE', 'PRG', 'MXP', 'VCE', 'ATH', 'IST'].includes(dest.code)) {
+      baseFare = 39500;
+      durationStr = '8h 55m';
+      carrier1 = dest.code === 'CDG' 
+        ? { airline: 'Air France', code: 'AF', flight: 'AF-226', aircraft: 'Airbus A350-900' }
+        : dest.code === 'LHR' 
+        ? { airline: 'British Airways', code: 'BA', flight: 'BA-138', aircraft: 'Boeing 787-9 Dreamliner' }
+        : dest.code === 'ZRH' 
+        ? { airline: 'Swiss International', code: 'LX', flight: 'LX-155', aircraft: 'Boeing 777-300ER' }
+        : dest.code === 'AMS' 
+        ? { airline: 'KLM Royal Dutch', code: 'KL', flight: 'KL-878', aircraft: 'Boeing 787-9 Dreamliner' }
+        : { airline: 'Air India', code: 'AI', flight: 'AI-143', aircraft: 'Boeing 787-8 Dreamliner' };
+      carrier2 = { airline: 'Air India', code: 'AI', flight: 'AI-306', aircraft: 'Boeing 787-8 Dreamliner' };
+      returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-144', aircraft: 'Boeing 787-8 Dreamliner' };
+      carbonOut = 340;
+      baggageDesc = '23 kg included';
+    } else if (['JFK', 'SFO', 'LAX', 'ORD', 'YYZ'].includes(dest.code)) {
+      baseFare = 58000;
+      durationStr = '15h 20m';
+      carrier1 = { airline: 'Air India', code: 'AI', flight: 'AI-101', aircraft: 'Boeing 777-200LR' };
+      carrier2 = { airline: 'United Airlines', code: 'UA', flight: 'UA-83', aircraft: 'Boeing 787-9 Dreamliner' };
+      returnCarrier = { airline: 'Air India', code: 'AI', flight: 'AI-102', aircraft: 'Boeing 777-200LR' };
+      carbonOut = 520;
+      baggageDesc = '2 × 23 kg included';
+    } else if (['SYD', 'MEL'].includes(dest.code)) {
+      baseFare = 52000;
+      durationStr = '12h 10m';
+      carrier1 = { airline: 'Qantas', code: 'QF', flight: 'QF-68', aircraft: 'Airbus A330-200' };
+      carrier2 = { airline: 'Air India', code: 'AI', flight: 'AI-302', aircraft: 'Boeing 787-8 Dreamliner' };
+      returnCarrier = { airline: 'Qantas', code: 'QF', flight: 'QF-67', aircraft: 'Airbus A330-200' };
+      carbonOut = 450;
+      baggageDesc = '30 kg included';
+    } else if (['MLE', 'CMB', 'KTM'].includes(dest.code)) {
+      baseFare = dest.code === 'MLE' ? 14800 : 11500;
+      durationStr = '2h 45m';
+      carrier1 = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-1792', aircraft: 'Airbus A320neo' };
+      carrier2 = { airline: 'Air India', code: 'AI', flight: 'AI-265', aircraft: 'Airbus A320neo' };
+      returnCarrier = { airline: 'IndiGo Airlines', code: '6E', flight: '6E-1793', aircraft: 'Airbus A320neo' };
+      carbonOut = 120;
+      baggageDesc = '20 kg included';
+    } else {
+      // General dynamic corridor
+      baseFare = isInternational ? 34000 : 4500;
+      durationStr = isInternational ? '7h 30m' : '2h 10m';
+      carrier1 = isInternational
+        ? { airline: 'Air India', code: 'AI', flight: 'AI-312', aircraft: 'Boeing 787-8 Dreamliner' }
+        : { airline: 'IndiGo Airlines', code: '6E', flight: '6E-2041', aircraft: 'Airbus A320neo' };
+      carrier2 = isInternational
+        ? { airline: 'Lufthansa', code: 'LH', flight: 'LH-758', aircraft: 'Airbus A350-900' }
+        : { airline: 'Akasa Air', code: 'QP', flight: 'QP-1342', aircraft: 'Boeing 737 MAX 8' };
+      returnCarrier = isInternational
+        ? { airline: 'Air India', code: 'AI', flight: 'AI-313', aircraft: 'Boeing 787-8 Dreamliner' }
+        : { airline: 'Air India', code: 'AI', flight: 'AI-854', aircraft: 'Airbus A321neo' };
+      carbonOut = isInternational ? 310 : 80;
+      baggageDesc = isInternational ? '23 kg included' : '15 kg per traveler';
     }
 
     const pricePerPerson = Math.round(baseFare * cabinMultiplier);
@@ -168,22 +301,31 @@ export class FlightProvider implements IFlightProvider {
     const departureDate = params.departureDate || new Date().toISOString().split('T')[0];
     const returnDate = params.returnDate || this.addDays(departureDate, 5);
 
-    // Outbound Flight
+    const depTime1 = '08:30 AM';
+    const arrTime1 = calcArrival(depTime1, durationStr);
+
+    const depTime2 = '11:15 AM';
+    const arrTime2 = calcArrival(depTime2, durationStr);
+
+    const retDepTime = '06:45 PM';
+    const retArrTime = calcArrival(retDepTime, durationStr);
+
+    // Outbound Flight Options
     const outbound: NormalizedFlightOffer[] = [
       {
         id: `fl-out-1-${dest.code}`,
-        flightNumber: isInternational ? 'AI-306' : '6E-2041',
-        airline: isInternational ? 'Air India' : 'IndiGo Airlines',
-        airlineCode: isInternational ? 'AI' : '6E',
-        aircraft: isInternational ? 'Boeing 787-8 Dreamliner' : 'Airbus A320neo',
+        flightNumber: carrier1.flight,
+        airline: carrier1.airline,
+        airlineCode: carrier1.code,
+        aircraft: carrier1.aircraft,
         originAirport: origin.name,
         originCity: origin.city,
         originCode: origin.code,
         destinationAirport: dest.name,
         destinationCity: dest.city,
         destinationCode: dest.code,
-        departureTime: '08:30 AM',
-        arrivalTime: '10:00 AM',
+        departureTime: depTime1,
+        arrivalTime: arrTime1,
         departureDate,
         arrivalDate: departureDate,
         duration: durationStr,
@@ -202,26 +344,26 @@ export class FlightProvider implements IFlightProvider {
         source: 'demo',
         retrievedAt: new Date().toISOString(),
         dataStatus: 'demo',
-        carbonEmissionKg: isInternational ? 340 : 78,
+        carbonEmissionKg: carbonOut,
         baggage: {
           cabin: '7 kg included',
-          checkIn: isInternational ? '23 kg included' : '15 kg per traveler'
+          checkIn: baggageDesc
         }
       },
       {
         id: `fl-out-2-${dest.code}`,
-        flightNumber: isInternational ? 'AF-226' : 'QP-1342',
-        airline: isInternational ? 'Air France' : 'Akasa Air',
-        airlineCode: isInternational ? 'AF' : 'QP',
-        aircraft: isInternational ? 'Airbus A350-900' : 'Boeing 737 MAX 8',
+        flightNumber: carrier2.flight,
+        airline: carrier2.airline,
+        airlineCode: carrier2.code,
+        aircraft: carrier2.aircraft,
         originAirport: origin.name,
         originCity: origin.city,
         originCode: origin.code,
         destinationAirport: dest.name,
         destinationCity: dest.city,
         destinationCode: dest.code,
-        departureTime: '11:15 AM',
-        arrivalTime: '01:00 PM',
+        departureTime: depTime2,
+        arrivalTime: arrTime2,
         departureDate,
         arrivalDate: departureDate,
         duration: durationStr,
@@ -240,33 +382,33 @@ export class FlightProvider implements IFlightProvider {
         source: 'demo',
         retrievedAt: new Date().toISOString(),
         dataStatus: 'demo',
-        carbonEmissionKg: isInternational ? 320 : 75,
+        carbonEmissionKg: Math.round(carbonOut * 0.96),
         baggage: {
           cabin: '7 kg included',
-          checkIn: isInternational ? '23 kg included' : '15 kg per traveler'
+          checkIn: baggageDesc
         }
       }
     ];
 
-    // Return Flight (if returnDate requested)
+    // Return Flights
     const returnPricePerPerson = Math.round(pricePerPerson * 1.05);
     const returnTotalPrice = returnPricePerPerson * passengers;
 
     const returnFlights: NormalizedFlightOffer[] = [
       {
         id: `fl-ret-1-${dest.code}`,
-        flightNumber: isInternational ? 'AI-307' : 'AI-854',
-        airline: 'Air India',
-        airlineCode: 'AI',
-        aircraft: isInternational ? 'Boeing 787-8 Dreamliner' : 'Airbus A321neo',
+        flightNumber: returnCarrier.flight,
+        airline: returnCarrier.airline,
+        airlineCode: returnCarrier.code,
+        aircraft: returnCarrier.aircraft,
         originAirport: dest.name,
         originCity: dest.city,
         originCode: dest.code,
         destinationAirport: origin.name,
         destinationCity: origin.city,
         destinationCode: origin.code,
-        departureTime: '06:45 PM',
-        arrivalTime: '08:15 PM',
+        departureTime: retDepTime,
+        arrivalTime: retArrTime,
         departureDate: returnDate,
         arrivalDate: returnDate,
         duration: durationStr,
@@ -285,10 +427,10 @@ export class FlightProvider implements IFlightProvider {
         source: 'demo',
         retrievedAt: new Date().toISOString(),
         dataStatus: 'demo',
-        carbonEmissionKg: isInternational ? 340 : 82,
+        carbonEmissionKg: Math.round(carbonOut * 1.05),
         baggage: {
           cabin: '7 kg included',
-          checkIn: isInternational ? '23 kg included' : '20 kg included'
+          checkIn: baggageDesc
         }
       }
     ];

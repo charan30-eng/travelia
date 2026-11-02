@@ -607,6 +607,424 @@ export const AIRPORT_REGISTRY: Record<string, Airport> = {
     longitude: 126.4407,
     source: 'authoritative_registry',
     status: 'verified'
+  },
+  AMS: {
+    airportCode: 'AMS',
+    airportName: 'Amsterdam Airport Schiphol',
+    city: 'Amsterdam',
+    country: 'Netherlands',
+    countryCode: 'NL',
+    latitude: 52.3105,
+    longitude: 4.7683,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  SYD: {
+    airportCode: 'SYD',
+    airportName: 'Sydney Kingsford Smith Airport (T1)',
+    city: 'Sydney',
+    country: 'Australia',
+    countryCode: 'AU',
+    latitude: -33.9399,
+    longitude: 151.1753,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  MEL: {
+    airportCode: 'MEL',
+    airportName: 'Melbourne Tullamarine Airport',
+    city: 'Melbourne',
+    country: 'Australia',
+    countryCode: 'AU',
+    latitude: -37.6690,
+    longitude: 144.8410,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  MLE: {
+    airportCode: 'MLE',
+    airportName: 'Velana International Airport',
+    city: 'Malé / Maldives',
+    country: 'Maldives',
+    countryCode: 'MV',
+    latitude: 4.1918,
+    longitude: 73.5291,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  BCN: {
+    airportCode: 'BCN',
+    airportName: 'Josep Tarradellas Barcelona–El Prat Airport (T1)',
+    city: 'Barcelona',
+    country: 'Spain',
+    countryCode: 'ES',
+    latitude: 41.2974,
+    longitude: 2.0833,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  MAD: {
+    airportCode: 'MAD',
+    airportName: 'Adolfo Suárez Madrid–Barajas Airport (T4)',
+    city: 'Madrid',
+    country: 'Spain',
+    countryCode: 'ES',
+    latitude: 40.4839,
+    longitude: -3.5680,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  FRA: {
+    airportCode: 'FRA',
+    airportName: 'Frankfurt am Main Airport (T1)',
+    city: 'Frankfurt',
+    country: 'Germany',
+    countryCode: 'DE',
+    latitude: 50.0379,
+    longitude: 8.5622,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  MUC: {
+    airportCode: 'MUC',
+    airportName: 'Munich Franz Josef Strauss Airport',
+    city: 'Munich',
+    country: 'Germany',
+    countryCode: 'DE',
+    latitude: 48.3537,
+    longitude: 11.7750,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  VIE: {
+    airportCode: 'VIE',
+    airportName: 'Vienna International Airport',
+    city: 'Vienna',
+    country: 'Austria',
+    countryCode: 'AT',
+    latitude: 48.1103,
+    longitude: 16.5697,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  PRG: {
+    airportCode: 'PRG',
+    airportName: 'Václav Havel Airport Prague',
+    city: 'Prague',
+    country: 'Czech Republic',
+    countryCode: 'CZ',
+    latitude: 50.1008,
+    longitude: 14.2600,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  MXP: {
+    airportCode: 'MXP',
+    airportName: 'Milan Malpensa Airport (T1)',
+    city: 'Milan',
+    country: 'Italy',
+    countryCode: 'IT',
+    latitude: 45.6301,
+    longitude: 8.7255,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  VCE: {
+    airportCode: 'VCE',
+    airportName: 'Venice Marco Polo Airport',
+    city: 'Venice',
+    country: 'Italy',
+    countryCode: 'IT',
+    latitude: 45.5053,
+    longitude: 12.3519,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  SFO: {
+    airportCode: 'SFO',
+    airportName: 'San Francisco International Airport (Intl)',
+    city: 'San Francisco',
+    country: 'United States',
+    countryCode: 'US',
+    latitude: 37.6213,
+    longitude: -122.3790,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  LAX: {
+    airportCode: 'LAX',
+    airportName: 'Los Angeles International Airport (Tom Bradley)',
+    city: 'Los Angeles',
+    country: 'United States',
+    countryCode: 'US',
+    latitude: 33.9416,
+    longitude: -118.4085,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  KUL: {
+    airportCode: 'KUL',
+    airportName: 'Kuala Lumpur International Airport (KLIA1)',
+    city: 'Kuala Lumpur',
+    country: 'Malaysia',
+    countryCode: 'MY',
+    latitude: 2.7456,
+    longitude: 101.7072,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  DOH: {
+    airportCode: 'DOH',
+    airportName: 'Hamad International Airport',
+    city: 'Doha',
+    country: 'Qatar',
+    countryCode: 'QA',
+    latitude: 25.2609,
+    longitude: 51.6138,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  CMB: {
+    airportCode: 'CMB',
+    airportName: 'Bandaranaike International Airport',
+    city: 'Colombo',
+    country: 'Sri Lanka',
+    countryCode: 'LK',
+    latitude: 7.1808,
+    longitude: 79.8841,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  KTM: {
+    airportCode: 'KTM',
+    airportName: 'Tribhuvan International Airport',
+    city: 'Kathmandu',
+    country: 'Nepal',
+    countryCode: 'NP',
+    latitude: 27.6966,
+    longitude: 85.3591,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  ATH: {
+    airportCode: 'ATH',
+    airportName: 'Athens Eleftherios Venizelos Airport',
+    city: 'Athens / Santorini',
+    country: 'Greece',
+    countryCode: 'GR',
+    latitude: 37.9364,
+    longitude: 23.9445,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  IST: {
+    airportCode: 'IST',
+    airportName: 'Istanbul International Airport',
+    city: 'Istanbul',
+    country: 'Turkey',
+    countryCode: 'TR',
+    latitude: 41.2753,
+    longitude: 28.7519,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  CAI: {
+    airportCode: 'CAI',
+    airportName: 'Cairo International Airport',
+    city: 'Cairo',
+    country: 'Egypt',
+    countryCode: 'EG',
+    latitude: 30.1219,
+    longitude: 31.4056,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  CPT: {
+    airportCode: 'CPT',
+    airportName: 'Cape Town International Airport',
+    city: 'Cape Town',
+    country: 'South Africa',
+    countryCode: 'ZA',
+    latitude: -33.9715,
+    longitude: 18.6021,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  SXR: {
+    airportCode: 'SXR',
+    airportName: 'Sheikh ul-Alam International Airport',
+    city: 'Srinagar',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 33.9871,
+    longitude: 74.7744,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  UDR: {
+    airportCode: 'UDR',
+    airportName: 'Maharana Pratap Airport',
+    city: 'Udaipur',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 24.6177,
+    longitude: 73.8961,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  VNS: {
+    airportCode: 'VNS',
+    airportName: 'Lal Bahadur Shastri International Airport',
+    city: 'Varanasi',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 25.4524,
+    longitude: 82.8593,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  ATQ: {
+    airportCode: 'ATQ',
+    airportName: 'Sri Guru Ram Dass Jee International Airport',
+    city: 'Amritsar',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 31.7096,
+    longitude: 74.7973,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  IXL: {
+    airportCode: 'IXL',
+    airportName: 'Kushok Bakula Rimpochee Airport',
+    city: 'Leh',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 34.1359,
+    longitude: 77.5465,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  IXZ: {
+    airportCode: 'IXZ',
+    airportName: 'Veer Savarkar International Airport',
+    city: 'Port Blair',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 11.6411,
+    longitude: 92.7297,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  DED: {
+    airportCode: 'DED',
+    airportName: 'Jolly Grant Airport',
+    city: 'Dehradun / Rishikesh',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 30.1897,
+    longitude: 78.1803,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  IXC: {
+    airportCode: 'IXC',
+    airportName: 'Shaheed Bhagat Singh International Airport',
+    city: 'Chandigarh / Shimla / Manali',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 30.6735,
+    longitude: 76.7885,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  PNQ: {
+    airportCode: 'PNQ',
+    airportName: 'Pune International Airport (T2)',
+    city: 'Pune',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 18.5822,
+    longitude: 73.9197,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  LKO: {
+    airportCode: 'LKO',
+    airportName: 'Chaudhary Charan Singh International Airport (T3)',
+    city: 'Lucknow',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 26.7606,
+    longitude: 80.8893,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  GAU: {
+    airportCode: 'GAU',
+    airportName: 'Lokpriya Gopinath Bordoloi Int\'l Airport',
+    city: 'Guwahati',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 26.1061,
+    longitude: 91.5859,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  BBI: {
+    airportCode: 'BBI',
+    airportName: 'Biju Patnaik International Airport (T1)',
+    city: 'Bhubaneswar',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 20.2444,
+    longitude: 85.8178,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  TRV: {
+    airportCode: 'TRV',
+    airportName: 'Thiruvananthapuram International Airport',
+    city: 'Thiruvananthapuram',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 8.4821,
+    longitude: 76.9200,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  IXM: {
+    airportCode: 'IXM',
+    airportName: 'Madurai International Airport',
+    city: 'Madurai',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 9.8345,
+    longitude: 78.0934,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  CJB: {
+    airportCode: 'CJB',
+    airportName: 'Coimbatore International Airport',
+    city: 'Coimbatore / Ooty',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 11.0300,
+    longitude: 77.0434,
+    source: 'authoritative_registry',
+    status: 'verified'
+  },
+  AGR: {
+    airportCode: 'AGR',
+    airportName: 'Agra Airport / Kheria Air Force Station',
+    city: 'Agra',
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 27.1558,
+    longitude: 77.9609,
+    source: 'authoritative_registry',
+    status: 'verified'
   }
 };
 
@@ -784,16 +1202,79 @@ export function resolveAirport(query: CanonicalLocation | string | null | undefi
   }
 
   // Specific city aliases
-  if (qLower.includes('delhi') || qLower.includes('ncr')) return AIRPORT_REGISTRY.DEL;
+  if (qLower.includes('delhi') || qLower.includes('ncr') || qLower.includes('new delhi')) return AIRPORT_REGISTRY.DEL;
   if (qLower.includes('chennai') || qLower.includes('madras')) return AIRPORT_REGISTRY.MAA;
   if (qLower.includes('mumbai') || qLower.includes('bombay')) return AIRPORT_REGISTRY.BOM;
   if (qLower.includes('bengaluru') || qLower.includes('bangalore')) return AIRPORT_REGISTRY.BLR;
   if (qLower.includes('hyderabad')) return AIRPORT_REGISTRY.HYD;
   if (qLower.includes('kolkata') || qLower.includes('calcutta')) return AIRPORT_REGISTRY.CCU;
-  if (qLower.includes('goa')) return AIRPORT_REGISTRY.GOX;
-  if (qLower.includes('kochi') || qLower.includes('cochin') || qLower.includes('kerala')) return AIRPORT_REGISTRY.COK;
+  if (qLower.includes('goa') || qLower.includes('mopa') || qLower.includes('dabolim') || qLower.includes('panaji')) return AIRPORT_REGISTRY.GOX;
+  if (qLower.includes('kochi') || qLower.includes('cochin') || qLower.includes('kerala') || qLower.includes('alleppey') || qLower.includes('munnar')) return AIRPORT_REGISTRY.COK;
   if (qLower.includes('jaipur') || qLower.includes('rajasthan')) return AIRPORT_REGISTRY.JAI;
-  if (qLower.includes('ahmedabad')) return AIRPORT_REGISTRY.AMD;
+  if (qLower.includes('ahmedabad') || qLower.includes('gujarat')) return AIRPORT_REGISTRY.AMD;
+  if (qLower.includes('srinagar') || qLower.includes('kashmir') || qLower.includes('gulmarg') || qLower.includes('pahalgam')) return AIRPORT_REGISTRY.SXR;
+  if (qLower.includes('udaipur')) return AIRPORT_REGISTRY.UDR;
+  if (qLower.includes('varanasi') || qLower.includes('banaras') || qLower.includes('kashi')) return AIRPORT_REGISTRY.VNS;
+  if (qLower.includes('amritsar') || qLower.includes('punjab')) return AIRPORT_REGISTRY.ATQ;
+  if (qLower.includes('leh') || qLower.includes('ladakh')) return AIRPORT_REGISTRY.IXL;
+  if (qLower.includes('port blair') || qLower.includes('andaman') || qLower.includes('havelock')) return AIRPORT_REGISTRY.IXZ;
+  if (qLower.includes('dehradun') || qLower.includes('rishikesh') || qLower.includes('haridwar') || qLower.includes('mussoorie')) return AIRPORT_REGISTRY.DED;
+  if (qLower.includes('chandigarh') || qLower.includes('shimla') || qLower.includes('manali') || qLower.includes('kullu') || qLower.includes('himachal')) return AIRPORT_REGISTRY.IXC;
+  if (qLower.includes('pune')) return AIRPORT_REGISTRY.PNQ;
+  if (qLower.includes('lucknow')) return AIRPORT_REGISTRY.LKO;
+  if (qLower.includes('guwahati') || qLower.includes('assam') || qLower.includes('kaziranga')) return AIRPORT_REGISTRY.GAU;
+  if (qLower.includes('bhubaneswar') || qLower.includes('puri') || qLower.includes('odisha')) return AIRPORT_REGISTRY.BBI;
+  if (qLower.includes('trivandrum') || qLower.includes('thiruvananthapuram') || qLower.includes('kovalam')) return AIRPORT_REGISTRY.TRV;
+  if (qLower.includes('coimbatore') || qLower.includes('ooty')) return AIRPORT_REGISTRY.CJB;
+  if (qLower.includes('madurai')) return AIRPORT_REGISTRY.IXM;
+  if (qLower.includes('agra') || qLower.includes('taj mahal')) return AIRPORT_REGISTRY.AGR;
+
+  // International Destination and Country Aliases
+  if (qLower.includes('switzerland') || qLower.includes('swiss') || qLower.includes('zurich') || qLower.includes('interlaken') || qLower.includes('lucerne') || qLower.includes('zermatt')) return AIRPORT_REGISTRY.ZRH;
+  if (qLower.includes('amsterdam') || qLower.includes('netherlands') || qLower.includes('holland')) return AIRPORT_REGISTRY.AMS;
+  if (qLower.includes('sydney') || qLower.includes('australia')) return AIRPORT_REGISTRY.SYD;
+  if (qLower.includes('melbourne')) return AIRPORT_REGISTRY.MEL;
+  if (qLower.includes('maldives') || qLower.includes('male') || qLower.includes('hulhumale')) return AIRPORT_REGISTRY.MLE;
+  if (qLower.includes('spain') || qLower.includes('barcelona') || qLower.includes('catalonia')) return AIRPORT_REGISTRY.BCN;
+  if (qLower.includes('madrid')) return AIRPORT_REGISTRY.MAD;
+  if (qLower.includes('germany') || qLower.includes('frankfurt') || qLower.includes('berlin')) return AIRPORT_REGISTRY.FRA;
+  if (qLower.includes('munich') || qLower.includes('bavaria')) return AIRPORT_REGISTRY.MUC;
+  if (qLower.includes('austria') || qLower.includes('vienna')) return AIRPORT_REGISTRY.VIE;
+  if (qLower.includes('prague') || qLower.includes('czech')) return AIRPORT_REGISTRY.PRG;
+  if (qLower.includes('paris') || qLower.includes('france') || qLower.includes('nice')) return AIRPORT_REGISTRY.CDG;
+  if (qLower.includes('rome') || qLower.includes('italy') || qLower.includes('amalfi') || qLower.includes('florence') || qLower.includes('naples')) return AIRPORT_REGISTRY.FCO;
+  if (qLower.includes('milan')) return AIRPORT_REGISTRY.MXP;
+  if (qLower.includes('venice')) return AIRPORT_REGISTRY.VCE;
+  if (qLower.includes('london') || qLower.includes('uk') || qLower.includes('united kingdom') || qLower.includes('england') || qLower.includes('britain')) return AIRPORT_REGISTRY.LHR;
+  if (qLower.includes('new york') || qLower.includes('nyc') || qLower.includes('manhattan') || qLower.includes('usa') || qLower.includes('united states') || qLower.includes('america')) return AIRPORT_REGISTRY.JFK;
+  if (qLower.includes('san francisco') || qLower.includes('california')) return AIRPORT_REGISTRY.SFO;
+  if (qLower.includes('los angeles') || qLower.includes('hollywood')) return AIRPORT_REGISTRY.LAX;
+  if (qLower.includes('dubai') || qLower.includes('uae') || qLower.includes('emirates') || qLower.includes('abu dhabi')) return AIRPORT_REGISTRY.DXB;
+  if (qLower.includes('singapore')) return AIRPORT_REGISTRY.SIN;
+  if (qLower.includes('bangkok') || qLower.includes('thailand') || qLower.includes('pattaya')) return AIRPORT_REGISTRY.BKK;
+  if (qLower.includes('phuket') || qLower.includes('krabi') || qLower.includes('samui')) return AIRPORT_REGISTRY.HKT;
+  if (qLower.includes('bali') || qLower.includes('indonesia') || qLower.includes('ubud') || qLower.includes('denpasar')) return AIRPORT_REGISTRY.DPS;
+  if (qLower.includes('tokyo') || qLower.includes('japan')) return AIRPORT_REGISTRY.HND;
+  if (qLower.includes('kyoto') || qLower.includes('osaka')) return AIRPORT_REGISTRY.KIX;
+  if (qLower.includes('seoul') || qLower.includes('korea') || qLower.includes('incheon') || qLower.includes('busan') || qLower.includes('jeju')) return AIRPORT_REGISTRY.ICN;
+  if (qLower.includes('kuala lumpur') || qLower.includes('malaysia') || qLower.includes('penang')) return AIRPORT_REGISTRY.KUL;
+  if (qLower.includes('doha') || qLower.includes('qatar')) return AIRPORT_REGISTRY.DOH;
+  if (qLower.includes('colombo') || qLower.includes('sri lanka')) return AIRPORT_REGISTRY.CMB;
+  if (qLower.includes('kathmandu') || qLower.includes('nepal')) return AIRPORT_REGISTRY.KTM;
+  if (qLower.includes('greece') || qLower.includes('athens') || qLower.includes('santorini') || qLower.includes('mykonos')) return AIRPORT_REGISTRY.ATH;
+  if (qLower.includes('turkey') || qLower.includes('istanbul') || qLower.includes('cappadocia')) return AIRPORT_REGISTRY.IST;
+  if (qLower.includes('cairo') || qLower.includes('egypt')) return AIRPORT_REGISTRY.CAI;
+  if (qLower.includes('cape town') || qLower.includes('south africa')) return AIRPORT_REGISTRY.CPT;
+
+  // Check by Country in Registry
+  for (const apt of Object.values(AIRPORT_REGISTRY)) {
+    if (
+      (apt.country && qLower.includes(apt.country.toLowerCase())) ||
+      (apt.countryCode && qUpper === apt.countryCode.toUpperCase())
+    ) {
+      return apt;
+    }
+  }
 
   return null;
 }

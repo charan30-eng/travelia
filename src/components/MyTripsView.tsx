@@ -104,6 +104,8 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
 
   const persistedCount = savedTrips.filter(t => !isTripDemo(t) && !isTripArchived(t)).length;
   const archivedCount = savedTrips.filter(t => isTripArchived(t)).length;
+  const activeCount = savedTrips.filter(t => !isTripArchived(t)).length;
+  const demoCount = savedTrips.filter(t => isTripDemo(t)).length;
 
   const handleDuplicate = (e: React.MouseEvent, trip: TripPlan) => {
     e.stopPropagation();
@@ -175,9 +177,9 @@ export const MyTripsView: React.FC<MyTripsViewProps> = ({
           {[
             { id: 'all', label: `All Trips (${savedTrips.length})` },
             { id: 'persisted', label: `Persisted (${persistedCount})` },
-            { id: 'active', label: 'Active' },
+            { id: 'active', label: `Active (${activeCount})` },
             { id: 'archived', label: `Archived (${archivedCount})` },
-            { id: 'demo', label: 'Demo Templates' }
+            { id: 'demo', label: `Demo Templates (${demoCount})` }
           ].map((tab) => (
             <button
               key={tab.id}
